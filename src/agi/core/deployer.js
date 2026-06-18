@@ -1,21 +1,34 @@
-import simpleGit from 'simple-git';
+import { exec } from 'child_process';
+import util from 'util';
 
-const git = simpleGit();
+const execPromise = util.promisify(exec);
+
+export const syncToCloud = () => {
+    return new Promise((resolve, reject) => {
+        const commands = [
+            'git add .',
+            'git commit -m "Auto-Evolution: New strategies and system update"',
+            'git push origin main'
+        ].join(' && ');
+        exec(commands, (error, stdout, stderr) => {
+            if (error) {
+                console.error("Sync Failed:", stderr);
+                return reject(error);
+            }
+            console.log("Sync Success:", stdout);
+            resolve(stdout);
+        });
+    });
+};
 
 export async function autoDeploy() {
-  try {
-    const status = await git.status();
-    if (status.files.length === 0) {
-      console.log('deployer: no changes to deploy');
-      return false;
+    try {
+        console.log("Deploying to Hugging Face Spaces...");
+        await execPromise('git add .');
+        await execPromise('git commit -m "Auto-evolution: New strategies added"');
+        await execPromise('git push huggingface main');
+        console.log("Deployment successful.");
+    } catch (error) {
+        console.error("Deployment failed:", error);
     }
-    await git.add('.');
-    await git.commit('Emerald: autonomous update cycle');
-    await git.push('origin', 'main');
-    console.log('deployer: pushed to origin/main');
-    return true;
-  } catch (e) {
-    console.error('deployer: failed —', e.message);
-    return false;
-  }
 }

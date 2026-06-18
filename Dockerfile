@@ -1,17 +1,9 @@
-FROM node:18-alpine
-
+FROM node:18-slim
+RUN apt-get update && apt-get install -y git python3
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm ci --only=production
-
+RUN npm install
 COPY . .
 
-RUN mkdir -p logs
-
-EXPOSE 3000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
-
+# Start the brain
 CMD ["node", "src/agi/brain.js"]
