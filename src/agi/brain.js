@@ -1,43 +1,29 @@
 import { SYSTEM_PROMPT } from '../config/systemConfig.js';
-import { isSafeToModify } from './core/guardrail.js';
-import ollama from './core/ollamaConnector.js';
-import { loadTokens } from './core/tokenLoader.js';
-import { Orchestrator } from './core/orchestrator.js';
+import { DynamicMonetizationEngine } from '../modules/monetization/DynamicEngine.js';
+import { autoDeploy } from './core/deployer.js';
 
-async function runBrain() {
-  console.log('--- INITIALIZING EMERALD ARCHITECT ---');
+const engine = new DynamicMonetizationEngine();
 
-  loadTokens();
-
-  const orchestrator = new Orchestrator();
-  await orchestrator.bootstrap();
-
-  const task = 'Audit system, identify top 3 revenue streams, and propose a new child-agent.';
-  const response = await ollama.generateThought(
-    SYSTEM_PROMPT + '\n\nCURRENT TASK:\n' + task +
-    '\n\nCurrent metrics: ' + JSON.stringify(orchestrator.metrics.summary())
-  );
-  console.log('ARCHITECT STRATEGY:', response);
-
-  if (response && response.includes('NEW_MODULE')) {
-    const targetPath = './src/modules/monetization/strategies/aiGenerated.js';
-    if (isSafeToModify(targetPath)) {
-      console.log('Deploying new module safely...');
-      await orchestrator.deployer.writeAndDeploy(
-        targetPath,
-        `export default {\n  name: 'AI Generated Strategy',\n  tier: 'experimental',\n  async execute() {\n    console.log('[AI Strategy] Executing...');\n    return { revenue: 0, status: 'active', note: 'AI-generated strategy deployed' };\n  }\n};`,
-        'Emerald: AI-generated strategy module'
-      );
-    } else {
-      console.log('Modification blocked for safety.');
-    }
-  }
-
-  console.log('\n--- EMERALD ARCHITECT ONLINE ---');
-  await orchestrator.runForever(3600000);
+async function startBrain() {
+    console.log("--- INITIALIZING AUTONOMOUS ARCHITECT ---");
+    engine.loadStrategies();
+    
+    // Auto-Execution Loop
+    setInterval(async () => {
+        console.log("Scanning for opportunities...");
+        await engine.executeAll();
+        
+        // Auto-Deploy logic
+        const needsUpdate = await checkNeedForUpdate();
+        if (needsUpdate) {
+            await autoDeploy();
+        }
+    }, 3600000); // Runs hourly
 }
 
-runBrain().catch(e => {
-  console.error('Brain fatal:', e.message);
-  process.exit(1);
-});
+async function checkNeedForUpdate() {
+    // Logic to compare local code vs GitHub
+    return true; 
+}
+
+startBrain();

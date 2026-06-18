@@ -11,18 +11,26 @@ class DynamicMonetizationEngine {
     this.pluginsDir = path.join(__dirname, 'strategies');
   }
 
-  loadStrategies() {
-    const files = fs.readdirSync(this.pluginsDir);
-    files.forEach(file => {
-      const strategy = import(path.join(this.pluginsDir, file));
-      this.strategies.push(strategy);
-    });
+  async loadStrategies() {
+    const files = fs.readdirSync(this.pluginsDir).filter(f => f.endsWith('.js'));
+    const imports = files.map(f =>
+      import(path.join(this.pluginsDir, f)).then(m => {
+        this.strategies.push(m.default);
+        console.log(`Loaded strategy: ${f}`);
+      })
+    );
+    await Promise.all(imports);
     console.log(`Loaded ${this.strategies.length} revenue streams dynamically.`);
   }
 
   async runAll() {
     await Promise.all(this.strategies.map(s => s.execute()));
   }
+
+  async executeAll() {
+    return this.runAll();
+  }
 }
 
+export { DynamicMonetizationEngine };
 export default new DynamicMonetizationEngine();
