@@ -1,0 +1,94 @@
+name: Deploy to Netlify
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * *'
+
+concurrency:
+  group: netlify-deploy
+  cancel-in-progress: false
+
+env:
+  TMPDIR: /tmp/emerald-netlify
+  NODE_OPTIONS: '--max-old-space-size=256'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Initialize isolated temp workspace
+        run: |
+          rm -rf $TMPDIR
+          mkdir -p $TMPDIR
+          chmod 700 $TMPDIR
+
+      - name: Decrypt env (secrets only)
+        env:
+          EMERALD_KEY: ${{ secrets.EMERALD_KEY }}
+        run: |
+          if [ -n "$EMERALD_KEY" ] && [ -f .env.encrypted ]; then
+            node -e "
+              const c = await import('./src/security/crypto-config.js');
+              if (!c.verifyChecksum('.env.encrypted')) {
+                console.error('Checksum mismatch — aborting decryption');
+                process.exit(1);
+              }
+              c.decryptEnvFile('.env.encrypted', process.env.EMERALD_KEY);
+            "
+            cp .env $TMPDIR/.env
+            node -e "
+              const { secureWipe } = await import('./src/security/crypto-config.js');
+              secureWipe('.env', 2);
+            "
+          else
+            echo "No encrypted env — deploying without secrets"
+          fi
+
+      - name: Restore env from isolated workspace
+        run: |
+          if [ -f $TMPDIR/.env ]; then
+            cp $TMPDIR/.env .env
+            chmod 600 .env
+          fi
+
+      - name: Deploy to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ]; then
+            echo "NETLIFY_AUTH_TOKEN not set — skipping deploy"
+            exit 0
+          fi
+          npx netlify-cli deploy --prod --dir=. \
+            --message="Emerald ${GITHUB_SHA:0:7} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Secure wipe all secrets from workspace
+        if: always()
+        run: |
+          node -e "
+            const { secureWipe } = await import('./src/security/crypto-config.js');
+            ['.env', '.env.local', '.env.production'].forEach(f => {
+              try { secureWipe(f, 2); } catch(e) {}
+            });
+          "
+          rm -rf $TMPDIR
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Netlify deploy failed for ${{ github.sha }}"

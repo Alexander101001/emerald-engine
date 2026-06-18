@@ -1,0 +1,14 @@
+node_modules/
+.env
+logs/
+*.log
+secure-config.json
+dist/
+secure-tokens.json
+.vault/
+*.db
+.DS_Store
+.aegis/
+.tmp-emerald/
+.secrets/
+.tenants/

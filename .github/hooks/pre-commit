@@ -1,0 +1,51 @@
+#!/bin/sh
+#==============================================================================
+# Emerald pre-commit hook — auto-encrypt .env before every commit
+# Install: cp .github/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+#==============================================================================
+set -e
+
+HOOK_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$HOOK_DIR" || exit 1
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+
+# ── Auto-encrypt .env if it exists and is modified ───────────────────
+if [ -f .env ] && git diff --cached --name-only | grep -q '^\.env$'; then
+  echo "${YELLOW}[pre-commit]${NC} .env is staged — encrypting..."
+
+  if [ -z "$EMERALD_KEY" ]; then
+    echo "${RED}[pre-commit]${NC} EMERALD_KEY not set. Aborting commit."
+    echo "  Set it: export EMERALD_KEY='your-passphrase'"
+    echo "  Or skip: git commit --no-verify"
+    exit 1
+  fi
+
+  # Encrypt .env → .env.encrypted
+  node src/security/crypto-config.js encrypt "$EMERALD_KEY"
+
+  # Secure-wipe plaintext .env from staging
+  git reset .env 2>/dev/null || true
+
+  # Stage the encrypted version
+  git add .env.encrypted .env.encrypted.sha256 2>/dev/null || true
+
+  echo "${GREEN}[pre-commit]${NC} .env encrypted and staged as .env.encrypted"
+fi
+
+# ── Ensure .env.encrypted.sha256 is staged if .env.encrypted is ──────
+if git diff --cached --name-only | grep -q '\.env\.encrypted$'; then
+  if ! git diff --cached --name-only | grep -q '\.env\.encrypted\.sha256$'; then
+    echo "${YELLOW}[pre-commit]${NC} Staging .env.encrypted.sha256..."
+    git add .env.encrypted.sha256 2>/dev/null || true
+  fi
+fi
+
+# ── Block plaintext .env from being committed ────────────────────────
+if git diff --cached --name-only | grep -q '^\.env$'; then
+  echo "${RED}[pre-commit]${NC} Plaintext .env would be committed! Run:"
+  echo "  git reset .env && npm run encrypt && git add .env.encrypted"
+  exit 1
+fi
+
+exit 0
