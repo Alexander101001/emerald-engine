@@ -1,6 +1,17 @@
+import 'dotenv/config';
+import { decrypt } from './core/security.js';
 import { ScoutAgent } from './core/ScoutAgent.js';
 import { syncToCloud } from './core/deployer.js';
 import { exec } from 'child_process';
+
+// فك التشفير عند التشغيل فقط (في الذاكرة العشوائية)
+try {
+    if (process.env.GITHUB_TOKEN) global.GITHUB_TOKEN = decrypt(process.env.GITHUB_TOKEN);
+    if (process.env.HF_TOKEN) global.HF_TOKEN = decrypt(process.env.HF_TOKEN);
+    console.log("System Security: Decryption successful.");
+} catch (e) {
+    console.log("System Security: Tokens not encrypted in env (using secure-tokens.json or raw values).");
+}
 
 async function autonomousLoop() {
     console.log("--- STARTING EMERALD EVOLUTION CYCLE ---");
