@@ -9,7 +9,9 @@
     "brain": "node src/agi/brain.js",
     "orchestrate": "node src/index.js",
     "deploy": "node -e \"import('./src/agi/core/selfDeployer.js').then(m => new m.SelfDeployer().pushChanges('manual deploy'))\"",
-    "strategies": "node -e \"import('./src/modules/monetization/DynamicMonetizationEngine.js').then(m => { const e = new m.DynamicMonetizationEngine(); e.loadStrategies(); e.executeAll(); })\""
+    "strategies": "node -e \"import('./src/modules/monetization/DynamicMonetizationEngine.js').then(m => { const e = new m.DynamicMonetizationEngine(); e.loadStrategies(); e.executeAll(); })\"",
+    "ui": "node src/ui/server.js",
+    "notify": "node -e \"import('./src/utils/notifier.js').then(m => m.notifySuccess(9.99, 'test'))\""
   },
   "dependencies": {
     "axios": "^1.6.0",

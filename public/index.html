@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Emerald Dashboard</title>
+    <style>body { font-family: sans-serif; padding: 20px; background: #000; color: #0f0; }</style>
+</head>
+<body>
+    <h1>Emerald Engine Status: <span id="status">Loading...</span></h1>
+    <div id="profits"></div>
+    <script>
+        fetch('/api/status').then(res => res.json()).then(data => {
+            document.getElementById('status').innerText = data.status;
+            document.getElementById('profits').innerHTML = JSON.stringify(data.profits, null, 2);
+        });
+    </script>
+</body>
+</html>

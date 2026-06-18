@@ -13,8 +13,8 @@ function encrypt() {
   const tokens = {
     GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
     HF_TOKEN: process.env.HF_TOKEN || '',
-    TELEGRAM_TOKEN: process.env.TELEGRAM_TOKEN || '',
-    TELEGRAM_ID: process.env.TELEGRAM_ID || ''
+    TELEGRAM_TOKEN: process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_TOKEN || '',
+    TELEGRAM_ID: process.env.TELEGRAM_USER_ID || process.env.TELEGRAM_ID || ''
   };
 
   const iv = crypto.randomBytes(12);
