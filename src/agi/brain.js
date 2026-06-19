@@ -1,95 +1,81 @@
 import 'dotenv/config';
 import { loadVault } from '../security/apiKeyVault.js';
 import { SearchEngine } from './core/SearchEngine.js';
-import { syncToCloud } from './core/deployer.js';
 import axios from 'axios';
 import fs from 'fs';
-
-if (!process.env.SERPER_API_KEY || !process.env.GITHUB_TOKEN) {
-    console.error("[HALT] Missing required keys in .env (SERPER_API_KEY, GITHUB_TOKEN)");
-    process.exit(1);
-}
+import { execSync } from 'child_process';
 
 const CONFIG = {
     ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434/api/generate',
-    checkInterval: 1000
+    checkInterval: 5000
 };
 
-const searchEngine = new SearchEngine(process.env.SERPER_API_KEY);
+const searchEngine = new SearchEngine(process.env.SERPER_API_KEY || '');
 
-async function checkSystem() {
-    console.log("[DIAGNOSTIC] Checking environment...");
-
-    if (!fs.existsSync('.env')) {
-        throw new Error("SYSTEM_HALT: .env file missing.");
-    }
-
+async function isOllamaRunning() {
     try {
-        await axios.get('http://localhost:11434');
-        console.log("[DIAGNOSTIC] Ollama: CONNECTED");
+        await axios.post(CONFIG.ollamaUrl, {
+            model: 'qwen2.5:1.5b',
+            prompt: 'ping',
+            stream: false
+        });
+        return true;
     } catch (e) {
-        throw new Error("SYSTEM_HALT: Ollama not reachable at port 11434.");
+        return false;
     }
-
-    console.log("[DIAGNOSTIC] All checks passed.");
 }
 
-async function saasFactory() {
-    console.log("[FACTORY] Starting SaaS Factory Cycle...");
+const generateHTML = (trend) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>${trend.title}</title>
+    <meta name="description" content="${trend.desc}">
+    <meta name="keywords" content="${trend.keywords}">
+</head>
+<body>
+    <div class="ad-slot">[ADSENSE_CODE_HERE]</div>
+    <h1>${trend.title}</h1>
+    <p>${trend.content}</p>
+</body>
+</html>`;
 
-    const trends = await searchEngine.search("trending software tools 2026");
-    if (!trends || trends.length === 0) {
+function deploy() {
+    try {
+        execSync('git add . && git commit -m "Auto-Deploy: New SaaS Page" && git push origin main', { stdio: 'pipe' });
+        console.log("[SUCCESS] Deployed to GitHub/HuggingFace.");
+    } catch (e) {
+        console.log("[ERROR] Deploy failed, check git status.");
+    }
+}
+
+async function runFactory() {
+    if (!(await isOllamaRunning())) {
+        console.log("[SYSTEM] Ollama offline. Waiting...");
         return;
     }
 
-    const ollamaPayload = {
-        model: 'qwen2.5:1.5b',
-        prompt: `Create a viral landing page HTML code for: ${trends[0].title}. Include space for AdSense and affiliate links. Return only valid HTML.`,
-        stream: false
+    console.log("[FACTORY] Generating SaaS Content...");
+
+    const trends = await searchEngine.search("trending software tools 2026");
+    if (!trends || trends.length === 0) {
+        console.log("[FACTORY] No trends found this cycle.");
+        return;
+    }
+
+    const trend = {
+        title: trends[0].title,
+        desc: trends[0].snippet || 'Discover the best software tools for 2026',
+        keywords: trends[0].title.toLowerCase().replace(/\s+/g, ', '),
+        content: trends[0].snippet || 'Learn more about this trending software tool.'
     };
 
-    try {
-        const response = await axios.post(CONFIG.ollamaUrl, ollamaPayload);
-        const content = response.data?.response || '';
+    const html = generateHTML(trend);
+    if (!fs.existsSync('./public')) fs.mkdirSync('./public');
+    fs.writeFileSync('./public/index.html', html);
+    console.log(`[FACTORY] Page generated: ${trend.title}`);
 
-        if (!fs.existsSync('./public')) {
-            fs.mkdirSync('./public');
-        }
-        fs.writeFileSync('./public/index.html', content);
-        console.log("[FACTORY] Landing page generated for:", trends[0].title);
-
-        await syncToCloud();
-        console.log("[FACTORY] Page deployed to GitHub.");
-    } catch (error) {
-        console.error("[FACTORY] Error:", error.message);
-    }
+    deploy();
 }
 
-async function runCycle() {
-    try {
-        console.log("[CYCLE] Starting cycle at:", new Date().toISOString());
-        await saasFactory();
-        console.log("[SUCCESS] Cycle completed at:", new Date().toISOString());
-    } catch (error) {
-        console.error("[ERROR] Cycle execution failed:", error.message);
-    }
-}
-
-async function main() {
-    try {
-        await checkSystem();
-        console.log("[SYSTEM] Initialization complete. Starting loop...");
-
-        loadVault();
-
-        while (true) {
-            await runCycle();
-            await new Promise(resolve => setTimeout(resolve, CONFIG.checkInterval));
-        }
-    } catch (err) {
-        console.error("[CRITICAL]", err.message);
-        process.exit(1);
-    }
-}
-
-main();
+loadVault();
+setInterval(runFactory, CONFIG.checkInterval);
