@@ -295,11 +295,11 @@ a{color:#667eea;text-decoration:none}a:hover{text-decoration:underline}
 `
 
 func commonHead(title, desc string) string {
-	return fmt.Sprintf(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>%s</title><meta name="description" content="%s"><meta name="robots" content="index,follow"><link rel="canonical" href="%s">%s<style>%s</style></head><body><div class="container">`, title, desc, baseURL, gaTag(), commonCSS)
+	return fmt.Sprintf(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>%s</title><meta name="description" content="%s"><meta name="robots" content="index,follow"><link rel="canonical" href="%s">%s<style>%s</style>%s</head><body><div class="container">`, title, desc, baseURL, gaTag(), commonCSS, toolJS)
 }
 
 func foot() string {
-	return fmt.Sprintf(`</div><footer><p>&copy; %d Emerald Engine. All rights reserved.</p><p style="margin-top:8px;font-size:0.8em;opacity:0.6;">As an Amazon Associate we earn from qualifying purchases. Affiliate links may earn us commission.</p><p style="margin-top:4px"><a href="/">Home</a> · <a href="/compare.html">Compare</a> · <a href="/review.html">Reviews</a> · <a href="/resources.html">Resources</a> · <a href="/blog/">Blog</a></p></footer></body></html>`, time.Now().Year())
+	return fmt.Sprintf(`</div><footer><p>&copy; %d Emerald Engine. All rights reserved.</p><p style="margin-top:8px;font-size:0.8em;opacity:0.6;">As an Amazon Associate we earn from qualifying purchases. Affiliate links may earn us commission.</p><p style="margin-top:4px"><a href="/">Home</a> · <a href="/tools/">Tools</a> · <a href="/compare.html">Compare</a> · <a href="/review.html">Reviews</a> · <a href="/resources.html">Resources</a> · <a href="/blog/">Blog</a></p></footer></body></html>`, time.Now().Year())
 }
 
 // ─── Page Generators ───
@@ -459,6 +459,111 @@ func genBlog() string {
 		foot())
 }
 
+// ─── Micro Tools ───
+
+const toolJS = `
+<script>
+function calcROI(){var i=parseFloat(document.getElementById('roi-invest').value)||0,r=parseFloat(document.getElementById('roi-return').value)||0,g=((r-i)/i*100).toFixed(2);document.getElementById('roi-result').innerHTML='<strong>ROI: '+g+'%</strong>'+(g>0?' 📈 Profit':' 📉 Loss')+(g>50?' — Excellent!':'')+(g<0?' — Needs improvement':'')+'<br><small>Net profit: $'+(r-i).toFixed(2)+'</small>'}
+function calcProfit(){var c=parseFloat(document.getElementById('prof-cost').value)||0,p=parseFloat(document.getElementById('prof-price').value)||0,m=((p-c)/p*100).toFixed(2),pr=(p-c).toFixed(2);document.getElementById('prof-result').innerHTML='<strong>Margin: '+m+'%</strong><br>Profit per unit: $'+pr+'<br>Markup: '+((p-c)/c*100).toFixed(2)+'%'}
+function calcConv(){var v=parseFloat(document.getElementById('conv-visitors').value)||0,c=parseFloat(document.getElementById('conv-conversions').value)||0,r=(c/v*100).toFixed(2);document.getElementById('conv-result').innerHTML='<strong>Conversion Rate: '+r+'%</strong><br>Visitors: '+v+' | Conversions: '+c+'<br>'+r>5?'🔥 Excellent!':r>2?'👍 Good':r>1?'👌 Average':'💪 Room for improvement'}
+function calcLead(){var v=parseFloat(document.getElementById('lead-visitors').value)||0,c=parseFloat(document.getElementById('lead-conversions').value)||0,cv=parseFloat(document.getElementById('lead-value').value)||0,cr=c/v*100,rev=c*cv;document.getElementById('lead-result').innerHTML='<strong>Lead Value Analysis</strong><br>Conversion Rate: '+cr.toFixed(2)+'%<br>Total Revenue: $'+rev.toFixed(2)+'<br>Revenue/Visitor: $'+(rev/v).toFixed(2)+'<br>If rate doubles: $'+(rev*2).toFixed(2)+' revenue'}
+function calcBudget(){var b=parseFloat(document.getElementById('budget-total').value)||0;if(!b)return;var a=document.getElementById('budget-channel').value;var p={social:b*0.35,search:b*0.25,email:b*0.15,content:b*0.15,display:b*0.10};document.getElementById('budget-result').innerHTML='<strong>Recommended Budget Allocation</strong><br>📱 Social Media: $'+p.social.toFixed(2)+'<br>🔍 Search Ads: $'+p.search.toFixed(2)+'<br>📧 Email: $'+p.email.toFixed(2)+'<br>📝 Content: $'+p.content.toFixed(2)+'<br>🖼️ Display: $'+p.display.toFixed(2)}
+</script>`
+
+func genToolsHub() string {
+	title := "Free Marketing Micro Tools - ROI Calculator, Profit Calculator & More"
+	desc := "Free interactive marketing tools: ROI calculator, profit margin calculator, conversion rate calculator, lead value calculator, and budget optimizer."
+	tools := []struct{ Name, Desc, Icon, Link string }{
+		{"ROI Calculator", "Calculate your return on investment instantly", "📊", "roi-calculator.html"},
+		{"Profit Margin Calculator", "Determine your profit margins and markup", "💰", "profit-calculator.html"},
+		{"Conversion Rate Calculator", "Track and optimize your conversion rates", "🎯", "conversion-calculator.html"},
+		{"Lead Value Calculator", "Calculate customer lifetime value and revenue", "💎", "lead-value-calculator.html"},
+		{"Budget Optimizer", "Optimize your marketing budget allocation", "📋", "budget-optimizer.html"},
+	}
+	cards := ""
+	for _, t := range tools {
+		cards += fmt.Sprintf(`<div class="acd" style="text-align:center"><div style="font-size:3em;margin-bottom:10px">%s</div><h4>%s</h4><p>%s</p><a href="/tools/%s" class="btn btn-p" target="_blank" style="font-size:0.9em;padding:10px 24px;margin-top:12px;display:inline-block">Use Tool →</a></div>`, t.Icon, t.Name, t.Desc, t.Link)
+	}
+	return fmt.Sprintf(`%s<header style="text-align:center;padding:50px 0 30px"><h1 style="font-size:2.5em;color:#333;margin-bottom:12px">🔧 Free Marketing Micro Tools</h1><p style="font-size:1.1em;color:#666;max-width:700px;margin:0 auto">Professional calculators to optimize your marketing ROI. Free to use, no signup required.</p></header><div class="ac">%s</div><div class="ag">%s</div><div class="ac">%s</div>%s<div class="ac">%s</div><div class="ac">%s</div>%s%s`,
+		commonHead(title, desc),
+		adBanner(), cards,
+		adInArticle(),
+		emailForm(),
+		adSidebar(), adMatched(),
+		cryptoDonate(),
+		foot())
+}
+
+func genROICalculator() string {
+	title := "Free ROI Calculator - Calculate Return on Investment"
+	desc := "Free online ROI calculator. Calculate your return on investment, net profit, and ROI percentage instantly."
+	return fmt.Sprintf(`%s<header style="text-align:center;padding:40px 0 20px"><h1 style="font-size:2.2em;color:#333">📊 ROI Calculator</h1><p style="color:#666;margin-top:8px">Calculate your return on investment in seconds</p></header><div class="ac">%s</div><div style="background:white;border:1px solid #e0e0e0;border-radius:16px;padding:35px;margin:25px 0;box-shadow:0 4px 15px rgba(0,0,0,0.05)"><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Total Investment ($)</label><input type="number" id="roi-invest" value="1000" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Total Return ($)</label><input type="number" id="roi-return" value="2500" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><button onclick="calcROI()" class="btn btn-p" style="font-size:1.1em;margin:15px 0">Calculate ROI</button><div id="roi-result" style="margin-top:20px;padding:20px;background:#f8f9fa;border-radius:10px;font-size:1.2em;text-align:center">Click Calculate to see your ROI</div></div><div class="ac">%s</div><p style="line-height:1.8;color:#444;margin:20px 0">Use our ROI calculator to evaluate the profitability of your marketing campaigns, business investments, and projects. Understanding your return on investment helps you make data-driven decisions about where to allocate your budget for maximum impact.</p><div class="ac">%s</div>%s<div class="ac">%s</div><div style="margin:30px 0;text-align:center"><a href="https://www.amazon.com/dp/B0BXYZ?tag=emeraldeng0e-20" class="btn btn-p" target="_blank" rel="nofollow sponsored">Get Premium Analytics Tools →</a></div>%s%s`,
+		commonHead(title, desc),
+		adBanner(),
+		adInArticle(),
+		adSidebar(),
+		emailForm(),
+		adMatched(),
+		cryptoDonate(),
+		foot())
+}
+
+func genProfitCalculator() string {
+	title := "Free Profit Margin Calculator - Calculate Markup & Margin"
+	desc := "Free online profit margin calculator. Calculate gross margin, markup percentage, and profit per unit instantly."
+	return fmt.Sprintf(`%s<header style="text-align:center;padding:40px 0 20px"><h1 style="font-size:2.2em;color:#333">💰 Profit Margin Calculator</h1><p style="color:#666;margin-top:8px">Calculate profit margins, markup, and per-unit profit</p></header><div class="ac">%s</div><div style="background:white;border:1px solid #e0e0e0;border-radius:16px;padding:35px;margin:25px 0;box-shadow:0 4px 15px rgba(0,0,0,0.05)"><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Cost Per Unit ($)</label><input type="number" id="prof-cost" value="50" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Selling Price ($)</label><input type="number" id="prof-price" value="100" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><button onclick="calcProfit()" class="btn btn-p" style="font-size:1.1em;margin:15px 0">Calculate Margin</button><div id="prof-result" style="margin-top:20px;padding:20px;background:#f8f9fa;border-radius:10px;font-size:1.2em;text-align:center">Click Calculate to see your margin</div></div><div class="ac">%s</div><p style="line-height:1.8;color:#444;margin:20px 0">Understanding your profit margins is essential for pricing strategy and business growth. Use this calculator to determine the optimal pricing for your products and services.</p><div class="ac">%s</div>%s<div class="ac">%s</div><div style="margin:30px 0;text-align:center"><a href="https://HOPLINK.hop.clickbank.net" class="btn btn-s" target="_blank" rel="nofollow sponsored">Get Pricing Software →</a></div>%s%s`,
+		commonHead(title, desc),
+		adBanner(),
+		adInArticle(),
+		adSidebar(),
+		emailForm(),
+		adMatched(),
+		cryptoDonate(),
+		foot())
+}
+
+func genConversionCalculator() string {
+	title := "Free Conversion Rate Calculator - Calculate CVR"
+	desc := "Free online conversion rate calculator. Calculate your conversion rate percentage from visitors and conversions instantly."
+	return fmt.Sprintf(`%s<header style="text-align:center;padding:40px 0 20px"><h1 style="font-size:2.2em;color:#333">🎯 Conversion Rate Calculator</h1><p style="color:#666;margin-top:8px">Track and optimize your conversion rates</p></header><div class="ac">%s</div><div style="background:white;border:1px solid #e0e0e0;border-radius:16px;padding:35px;margin:25px 0;box-shadow:0 4px 15px rgba(0,0,0,0.05)"><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Total Visitors</label><input type="number" id="conv-visitors" value="1000" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Conversions</label><input type="number" id="conv-conversions" value="35" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><button onclick="calcConv()" class="btn btn-p" style="font-size:1.1em;margin:15px 0">Calculate Rate</button><div id="conv-result" style="margin-top:20px;padding:20px;background:#f8f9fa;border-radius:10px;font-size:1.2em;text-align:center">Click Calculate to see your rate</div></div><div class="ac">%s</div><p style="line-height:1.8;color:#444;margin:20px 0">Conversion rate optimization (CRO) is key to maximizing your marketing ROI. Track your conversion rates over time and identify opportunities for improvement.</p><div class="ac">%s</div>%s<div class="ac">%s</div><div style="margin:30px 0;text-align:center"><a href="https://www.shareasale.com/r.cfm?b=ID&u=USER_ID&m=MERCHANT_ID" class="btn btn-w" target="_blank" rel="nofollow sponsored">Get CRO Tools →</a></div>%s%s`,
+		commonHead(title, desc),
+		adBanner(),
+		adInArticle(),
+		adSidebar(),
+		emailForm(),
+		adMatched(),
+		cryptoDonate(),
+		foot())
+}
+
+func genLeadValueCalculator() string {
+	title := "Free Lead Value Calculator - Calculate Customer Lifetime Value"
+	desc := "Free online lead value calculator. Calculate customer lifetime value, revenue per visitor, and conversion rate impact."
+	return fmt.Sprintf(`%s<header style="text-align:center;padding:40px 0 20px"><h1 style="font-size:2.2em;color:#333">💎 Lead Value Calculator</h1><p style="color:#666;margin-top:8px">Calculate customer lifetime value and revenue impact</p></header><div class="ac">%s</div><div style="background:white;border:1px solid #e0e0e0;border-radius:16px;padding:35px;margin:25px 0;box-shadow:0 4px 15px rgba(0,0,0,0.05)"><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Monthly Visitors</label><input type="number" id="lead-visitors" value="10000" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Monthly Conversions</label><input type="number" id="lead-conversions" value="200" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Avg. Customer Value ($)</label><input type="number" id="lead-value" value="500" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><button onclick="calcLead()" class="btn btn-p" style="font-size:1.1em;margin:15px 0">Calculate Value</button><div id="lead-result" style="margin-top:20px;padding:20px;background:#f8f9fa;border-radius:10px;font-size:1.2em;text-align:center">Click Calculate to see lead value</div></div><div class="ac">%s</div><p style="line-height:1.8;color:#444;margin:20px 0">Understanding your customer lifetime value helps you make informed decisions about marketing spend, customer acquisition costs, and growth strategies.</p><div class="ac">%s</div>%s<div class="ac">%s</div><div style="margin:30px 0;text-align:center"><a href="https://www.digistore24.com/redir/PRODUCT_ID" class="btn btn-p" target="_blank" rel="nofollow sponsored">Get Analytics Suite →</a></div>%s%s`,
+		commonHead(title, desc),
+		adBanner(),
+		adInArticle(),
+		adSidebar(),
+		emailForm(),
+		adMatched(),
+		cryptoDonate(),
+		foot())
+}
+
+func genBudgetOptimizer() string {
+	title := "Free Marketing Budget Optimizer - Allocate Your Budget"
+	desc := "Free online marketing budget optimizer. Get recommended budget allocation across social, search, email, content, and display channels."
+	return fmt.Sprintf(`%s<header style="text-align:center;padding:40px 0 20px"><h1 style="font-size:2.2em;color:#333">📋 Marketing Budget Optimizer</h1><p style="color:#666;margin-top:8px">Optimize your marketing budget allocation</p></header><div class="ac">%s</div><div style="background:white;border:1px solid #e0e0e0;border-radius:16px;padding:35px;margin:25px 0;box-shadow:0 4px 15px rgba(0,0,0,0.05)"><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Total Monthly Budget ($)</label><input type="number" id="budget-total" value="10000" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"></div><div style="margin:15px 0"><label style="display:block;margin-bottom:5px;font-weight:bold">Primary Channel</label><select id="budget-channel" style="width:100%%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:1.1em"><option value="social">Social Media</option><option value="search">Search Ads</option><option value="email">Email Marketing</option><option value="content">Content Marketing</option><option value="display">Display Ads</option></select></div><button onclick="calcBudget()" class="btn btn-p" style="font-size:1.1em;margin:15px 0">Optimize Budget</button><div id="budget-result" style="margin-top:20px;padding:20px;background:#f8f9fa;border-radius:10px;font-size:1.2em;text-align:center">Click Optimize to see allocation</div></div><div class="ac">%s</div><p style="line-height:1.8;color:#444;margin:20px 0">Effective budget allocation is crucial for marketing success. Our optimizer uses industry-standard benchmarks to recommend the ideal distribution across channels based on your total budget and primary focus area.</p><div class="ac">%s</div>%s<div class="ac">%s</div><div style="margin:30px 0;text-align:center"><a href="https://warriorplus.com/buy/PRODUCT_ID" class="btn btn-w" target="_blank" rel="nofollow sponsored">Get Budgeting Templates →</a></div>%s%s`,
+		commonHead(title, desc),
+		adBanner(),
+		adInArticle(),
+		adSidebar(),
+		emailForm(),
+		adMatched(),
+		cryptoDonate(),
+		foot())
+}
+
 // ─── Sitemap / Robots ───
 
 func genSitemap(pages []string) string {
@@ -502,11 +607,16 @@ func main() {
 	fmt.Printf("[ENGINE] Emerald Engine v4.0 starting\n")
 	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d providers\n", cycleDelay, len(llmProviders))
 
-	os.MkdirAll("public/blog", 0755)
+	for _, dir := range []string{"public/blog", "public/tools"} {
+		os.MkdirAll(dir, 0755)
+	}
 
 	outputFiles := []string{
 		"public/index.html", "public/compare.html", "public/review.html",
 		"public/resources.html", "public/blog/getting-started.html",
+		"public/tools/index.html", "public/tools/roi-calculator.html",
+		"public/tools/profit-calculator.html", "public/tools/conversion-calculator.html",
+		"public/tools/lead-value-calculator.html", "public/tools/budget-optimizer.html",
 		"public/sitemap.xml", "public/robots.txt",
 	}
 
@@ -519,11 +629,17 @@ func main() {
 		fmt.Printf("[ENGINE] Niche: %s %s\n", niche.Emoji, niche.Name)
 
 		pages := map[string]func() string{
-			"public/index.html":                func() string { return genIndex(niche) },
-			"public/compare.html":              genCompare,
-			"public/review.html":               genReview,
-			"public/resources.html":            genResources,
-			"public/blog/getting-started.html": genBlog,
+			"public/index.html":                     func() string { return genIndex(niche) },
+			"public/compare.html":                   genCompare,
+			"public/review.html":                    genReview,
+			"public/resources.html":                 genResources,
+			"public/blog/getting-started.html":      genBlog,
+			"public/tools/index.html":               genToolsHub,
+			"public/tools/roi-calculator.html":      genROICalculator,
+			"public/tools/profit-calculator.html":   genProfitCalculator,
+			"public/tools/conversion-calculator.html": genConversionCalculator,
+			"public/tools/lead-value-calculator.html": genLeadValueCalculator,
+			"public/tools/budget-optimizer.html":    genBudgetOptimizer,
 		}
 
 		for path, gen := range pages {
@@ -534,7 +650,7 @@ func main() {
 			fmt.Printf("[ENGINE] ✓ %s (%d bytes)\n", path, len(html))
 		}
 
-		allPages := []string{"index.html", "compare.html", "review.html", "resources.html", "blog/getting-started.html"}
+		allPages := []string{"index.html", "compare.html", "review.html", "resources.html", "blog/getting-started.html", "tools/index.html", "tools/roi-calculator.html", "tools/profit-calculator.html", "tools/conversion-calculator.html", "tools/lead-value-calculator.html", "tools/budget-optimizer.html"}
 		site := genSitemap(allPages)
 		os.WriteFile("public/sitemap.xml", []byte(site), 0644)
 		total += len(site)
