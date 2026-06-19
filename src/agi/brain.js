@@ -3,18 +3,17 @@ import { loadVault } from '../security/apiKeyVault.js';
 import { ScoutAgent } from './core/ScoutAgent.js';
 import { SearchEngine } from './core/SearchEngine.js';
 import { syncToCloud } from './core/deployer.js';
-import ollama from './core/ollamaConnector.js';
+import axios from 'axios';
 import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
 loadVault();
 
+const OLLAMA_URL = 'http://localhost:11434/api/generate';
 const search = new SearchEngine(process.env.SERPER_API_KEY || '');
 const scout = new ScoutAgent();
 let cycleCount = 0;
-const FULL_CYCLE_INTERVAL = 60; // seconds between cycles
-const DEEP_CYCLE_INTERVAL = 900; // deep cycle every 15 min
 
 async function generateAffiliatePages() {
     const productsDir = path.resolve('src/products/affiliate/pages');
@@ -53,43 +52,44 @@ async function generateAffiliatePages() {
 }
 
 async function runCycle() {
-    cycleCount++;
+    const now = new Date().toISOString();
     const isDeep = (cycleCount % 15 === 0);
-    console.log(`[${new Date().toISOString()}] Cycle #${cycleCount} ${isDeep ? '(DEEP)' : ''}`);
+    console.log(`[${now}] Cycle #${++cycleCount}`);
 
     exec('./scripts/cleanup.sh');
+
+    try {
+        const ai = await axios.post(OLLAMA_URL, {
+            model: 'qwen2.5:1.5b',
+            prompt: 'Analyze current SaaS monetization trends and suggest one actionable strategy.',
+            stream: false
+        }, { timeout: 30000 });
+        if (ai.data?.response) console.log('[AI]', ai.data.response.slice(0, 120));
+    } catch (err) {
+        console.warn('[AI] Ollama unavailable — skipping AI this cycle');
+    }
 
     await scout.scout();
 
     if (isDeep) {
-        const webResults = await search.search("Current SaaS monetization trends 2026");
-        const strategy = await ollama.generateThought(
-            `Summarize these opportunities into one actionable strategy: ${JSON.stringify(webResults)}`
-        );
-        if (strategy) console.log("[AI STRATEGY]:", strategy);
-    }
-
-    await generateAffiliatePages();
-
-    if (isDeep) {
+        await search.search("best SaaS monetization strategies 2026");
+        await generateAffiliatePages();
         try {
             await syncToCloud();
-            console.log("Deep cycle complete: deployed to cloud.");
         } catch (e) {
-            console.error("Deploy failed:", e.message);
+            console.error('[DEPLOY] Failed:', e.message);
         }
     }
 }
 
 async function main() {
-    console.log(`Emerald Engine — autonomous, always alive. 60s cycle (deep every 15 min)`);
     while (true) {
         try {
             await runCycle();
         } catch (error) {
-            console.error("[CRITICAL] Cycle failed, restarting immediately:", error);
+            console.error('[ERROR]', error.message);
         }
-        await new Promise(resolve => setTimeout(resolve, FULL_CYCLE_INTERVAL * 1000));
+        await new Promise(resolve => setTimeout(resolve, 5000));
     }
 }
 
