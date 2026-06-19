@@ -13,3 +13,4 @@ secure-tokens.json
 .tmp-emerald/
 .secrets/
 .tenants/
+src/engine/emerald-engine
