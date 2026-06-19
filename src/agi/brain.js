@@ -3,52 +3,54 @@ import { loadVault } from '../security/apiKeyVault.js';
 import axios from 'axios';
 import fs from 'fs';
 
-async function performSystemCheck() {
-    console.log("[SYSTEM] Starting Diagnostic...");
+const CONFIG = {
+    ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434/api/generate',
+    checkInterval: 1000
+};
+
+async function checkSystem() {
+    console.log("[DIAGNOSTIC] Checking environment...");
 
     if (!fs.existsSync('.env')) {
-        throw new Error("MISSING_CONFIG_ERROR: .env file not found.");
-    }
-
-    if (!process.env.SERPER_API_KEY || process.env.SERPER_API_KEY === 'your_serper_key_here') {
-        throw new Error("MISSING_CONFIG_ERROR: SERPER_API_KEY is not set.");
-    }
-
-    if (!process.env.GITHUB_TOKEN || process.env.GITHUB_TOKEN === 'your_github_token_here') {
-        throw new Error("MISSING_CONFIG_ERROR: GITHUB_TOKEN is not set.");
+        throw new Error("SYSTEM_HALT: .env file missing.");
     }
 
     try {
         await axios.get('http://localhost:11434');
-        console.log("[OK] Ollama is reachable.");
+        console.log("[DIAGNOSTIC] Ollama: CONNECTED");
     } catch (e) {
-        throw new Error("OLLAMA_SERVICE_DOWN: Please run 'ollama serve' or check supervisor.");
+        throw new Error("SYSTEM_HALT: Ollama not reachable at port 11434.");
     }
+}
 
-    console.log("[SYSTEM] Diagnostics Passed. Starting Engine.");
+async function runCycle() {
+    try {
+        const response = await axios.post(CONFIG.ollamaUrl, {
+            model: 'qwen2.5:1.5b',
+            prompt: 'Analyze current market trends and return strategy.',
+            stream: false
+        });
+        console.log("[SUCCESS] Cycle completed at:", new Date().toISOString());
+    } catch (error) {
+        console.error("[ERROR] Cycle execution failed:", error.message);
+    }
 }
 
 async function main() {
-    loadVault();
+    try {
+        await checkSystem();
+        console.log("[SYSTEM] Initialization complete. Starting loop...");
 
-    while (true) {
-        try {
-            await axios.post(process.env.OLLAMA_URL, {
-                model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
-                prompt: 'execute',
-                stream: false
-            });
-            console.log('Cycle OK');
-        } catch (e) {
-            console.error('Cycle Fail');
+        loadVault();
+
+        while (true) {
+            await runCycle();
+            await new Promise(resolve => setTimeout(resolve, CONFIG.checkInterval));
         }
-        await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+        console.error("[CRITICAL]", err.message);
+        process.exit(1);
     }
 }
 
-performSystemCheck()
-    .then(() => main())
-    .catch(err => {
-        console.error(err.message);
-        process.exit(1);
-    });
+main();
