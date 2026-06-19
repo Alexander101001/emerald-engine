@@ -53,8 +53,9 @@ async function generateAffiliatePages() {
 
 async function runCycle() {
     const now = new Date().toISOString();
+    cycleCount++;
     const isDeep = (cycleCount % 15 === 0);
-    console.log(`[${now}] Cycle #${++cycleCount}`);
+    console.log(`[${now}] Cycle #${cycleCount}${isDeep ? ' (DEEP)' : ''}`);
 
     exec('./scripts/cleanup.sh');
 
