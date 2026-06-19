@@ -1,0 +1,13 @@
+node_modules/
+.git/
+*.log
+.env
+emerald.db
+secure-tokens.json
+.vault/
+.aegis/
+.tmp-emerald/
+.secrets/
+.tenants/
+dist/
+logs/

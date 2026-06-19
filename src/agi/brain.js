@@ -12,6 +12,9 @@ loadVault();
 
 const search = new SearchEngine(process.env.SERPER_API_KEY || '');
 const scout = new ScoutAgent();
+let cycleCount = 0;
+const FULL_CYCLE_INTERVAL = 60; // seconds between cycles
+const DEEP_CYCLE_INTERVAL = 900; // deep cycle every 15 min
 
 async function generateAffiliatePages() {
     const productsDir = path.resolve('src/products/affiliate/pages');
@@ -50,36 +53,43 @@ async function generateAffiliatePages() {
 }
 
 async function runCycle() {
-    console.log(`[${new Date().toISOString()}] Starting cycle...`);
+    cycleCount++;
+    const isDeep = (cycleCount % 15 === 0);
+    console.log(`[${new Date().toISOString()}] Cycle #${cycleCount} ${isDeep ? '(DEEP)' : ''}`);
 
     exec('./scripts/cleanup.sh');
 
     await scout.scout();
 
-    const webResults = await search.search("Current SaaS monetization trends 2026");
-    const strategy = await ollama.generateThought(
-        `Summarize these opportunities into one actionable strategy: ${JSON.stringify(webResults)}`
-    );
-    if (strategy) console.log("[AI STRATEGY]:", strategy);
+    if (isDeep) {
+        const webResults = await search.search("Current SaaS monetization trends 2026");
+        const strategy = await ollama.generateThought(
+            `Summarize these opportunities into one actionable strategy: ${JSON.stringify(webResults)}`
+        );
+        if (strategy) console.log("[AI STRATEGY]:", strategy);
+    }
 
     await generateAffiliatePages();
 
-    try {
-        await syncToCloud();
-        console.log("Cycle complete: deployed to cloud.");
-    } catch (e) {
-        console.error("Deploy failed:", e.message);
+    if (isDeep) {
+        try {
+            await syncToCloud();
+            console.log("Deep cycle complete: deployed to cloud.");
+        } catch (e) {
+            console.error("Deploy failed:", e.message);
+        }
     }
 }
 
 async function main() {
+    console.log(`Emerald Engine — autonomous, always alive. 60s cycle (deep every 15 min)`);
     while (true) {
         try {
             await runCycle();
         } catch (error) {
             console.error("[CRITICAL] Cycle failed, restarting immediately:", error);
         }
-        await new Promise(resolve => setTimeout(resolve, 60000));
+        await new Promise(resolve => setTimeout(resolve, FULL_CYCLE_INTERVAL * 1000));
     }
 }
 

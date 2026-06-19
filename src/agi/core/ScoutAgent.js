@@ -10,7 +10,7 @@ export class ScoutAgent {
         this.proxy = new ProxyManager();
         this.searcher = new SearchEngine(process.env.SERPER_API_KEY || '');
         this.searchEndpoints = {
-            github: 'https://api.github.com/search/repositories?q=topic:saas-strategy+language:javascript',
+            github: 'https://api.github.com/search/repositories?q=saas+monetization+template+language:javascript&sort=stars&order=desc',
         };
     }
 
@@ -27,7 +27,9 @@ export class ScoutAgent {
         try {
             const proxyName = await this.proxy.getRoute('stealth');
             console.log(`[SCOUT] Routing through ${proxyName}`);
-            const response = await axios.get(this.searchEndpoints.github);
+            const ghToken = process.env.GITHUB_TOKEN || '';
+            const headers = ghToken ? { Authorization: `Bearer ${ghToken}` } : {};
+            const response = await axios.get(this.searchEndpoints.github, { headers });
             const items = response.data.items;
             
             for (const item of items) {
