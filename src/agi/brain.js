@@ -1,12 +1,18 @@
 import 'dotenv/config';
 import { loadVault } from '../security/apiKeyVault.js';
 import { ScoutAgent } from './core/ScoutAgent.js';
+import { SearchEngine } from './core/SearchEngine.js';
 import { syncToCloud } from './core/deployer.js';
+import ollama from './core/ollamaConnector.js';
 import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
 loadVault();
+
+const search = new SearchEngine(process.env.SERPER_API_KEY || '');
+let requestCount = 0;
+const MAX_REQUESTS_PER_CYCLE = 10;
 
 async function generateAffiliatePages() {
     const productsDir = path.resolve('src/products/affiliate/pages');
@@ -44,13 +50,36 @@ async function generateAffiliatePages() {
     }
 }
 
+async function checkApiQuota() {
+    requestCount++;
+    if (requestCount > MAX_REQUESTS_PER_CYCLE) {
+        console.warn("[QUOTA] Budget exhausted, skipping cycle to protect keys.");
+        return false;
+    }
+    return true;
+}
+
+async function analyzeTrends() {
+    const webResults = await search.search("profitable SaaS trends 2026 monetization");
+    if (!webResults || webResults.length === 0) return null;
+    const aiInsight = await ollama.generateThought(
+        `Summarize these SaaS opportunities into one actionable strategy: ${JSON.stringify(webResults)}`
+    );
+    return aiInsight || webResults[0]?.title || 'affiliate marketing automation';
+}
+
 async function autonomyCycle() {
-    console.log("--- STARTING EMERALD EVOLUTION CYCLE ---");
+    if (!(await checkApiQuota())) return;
+    console.log("--- STARTING 15-MIN EVOLUTION CYCLE ---");
+    requestCount = 0;
 
     exec('./scripts/cleanup.sh');
 
     const scout = new ScoutAgent();
     await scout.scout();
+
+    const strategy = await analyzeTrends();
+    if (strategy) console.log("[AI STRATEGY]:", strategy);
 
     await generateAffiliatePages();
 
@@ -65,14 +94,11 @@ async function autonomyCycle() {
 async function runAutonomousCycle() {
     try {
         console.log(`[${new Date().toISOString()}] Starting Evolution Cycle...`);
-
         await autonomyCycle();
-
         console.log("Cycle finished. Sleeping for 15 minutes.");
     } catch (e) {
         console.error("Cycle error, but system stays alive:", e);
     }
-
     setTimeout(runAutonomousCycle, 900000);
 }
 
