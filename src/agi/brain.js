@@ -11,8 +11,7 @@ import path from 'path';
 loadVault();
 
 const search = new SearchEngine(process.env.SERPER_API_KEY || '');
-let requestCount = 0;
-const MAX_REQUESTS_PER_CYCLE = 10;
+const scout = new ScoutAgent();
 
 async function generateAffiliatePages() {
     const productsDir = path.resolve('src/products/affiliate/pages');
@@ -50,56 +49,38 @@ async function generateAffiliatePages() {
     }
 }
 
-async function checkApiQuota() {
-    requestCount++;
-    if (requestCount > MAX_REQUESTS_PER_CYCLE) {
-        console.warn("[QUOTA] Budget exhausted, skipping cycle to protect keys.");
-        return false;
-    }
-    return true;
-}
-
-async function analyzeTrends() {
-    const webResults = await search.search("profitable SaaS trends 2026 monetization");
-    if (!webResults || webResults.length === 0) return null;
-    const aiInsight = await ollama.generateThought(
-        `Summarize these SaaS opportunities into one actionable strategy: ${JSON.stringify(webResults)}`
-    );
-    return aiInsight || webResults[0]?.title || 'affiliate marketing automation';
-}
-
-async function autonomyCycle() {
-    if (!(await checkApiQuota())) return;
-    console.log("--- STARTING 15-MIN EVOLUTION CYCLE ---");
-    requestCount = 0;
+async function runCycle() {
+    console.log(`[${new Date().toISOString()}] Starting cycle...`);
 
     exec('./scripts/cleanup.sh');
 
-    const scout = new ScoutAgent();
     await scout.scout();
 
-    const strategy = await analyzeTrends();
+    const webResults = await search.search("Current SaaS monetization trends 2026");
+    const strategy = await ollama.generateThought(
+        `Summarize these opportunities into one actionable strategy: ${JSON.stringify(webResults)}`
+    );
     if (strategy) console.log("[AI STRATEGY]:", strategy);
 
     await generateAffiliatePages();
 
     try {
         await syncToCloud();
-        console.log("Evolution Cycle Complete: Deployed to Cloud.");
+        console.log("Cycle complete: deployed to cloud.");
     } catch (e) {
-        console.error("Deployment failed, will retry next cycle.");
+        console.error("Deploy failed:", e.message);
     }
 }
 
-async function runAutonomousCycle() {
-    try {
-        console.log(`[${new Date().toISOString()}] Starting Evolution Cycle...`);
-        await autonomyCycle();
-        console.log("Cycle finished. Sleeping for 15 minutes.");
-    } catch (e) {
-        console.error("Cycle error, but system stays alive:", e);
+async function main() {
+    while (true) {
+        try {
+            await runCycle();
+        } catch (error) {
+            console.error("[CRITICAL] Cycle failed, restarting immediately:", error);
+        }
+        await new Promise(resolve => setTimeout(resolve, 60000));
     }
-    setTimeout(runAutonomousCycle, 900000);
 }
 
-runAutonomousCycle();
+main();
