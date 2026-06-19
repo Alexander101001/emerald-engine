@@ -1,0 +1,16 @@
+name: Keep HF Space Awake
+
+on:
+  schedule:
+    - cron: '*/25 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping HF Space
+        run: curl -s --max-time 15 "https://alexandergreater90-emerald-engine.hf.space/api/status" -o /dev/null -w "%{http_code}" || echo "sleeping"
+
+      - name: Run Brain Cycle
+        run: curl -s --max-time 30 -X POST "https://alexandergreater90-emerald-engine.hf.space/api/cron" || echo "cron not available"

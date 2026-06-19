@@ -31,6 +31,13 @@ export async function getDb() {
     status TEXT DEFAULT 'active',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS affiliate_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT,
+    source TEXT,
+    amount REAL DEFAULT 0,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
 
   save();
   return db;
