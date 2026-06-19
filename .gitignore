@@ -5,6 +5,7 @@ logs/
 secure-config.json
 dist/
 secure-tokens.json
+api_key
 .vault/
 *.db
 .env.local

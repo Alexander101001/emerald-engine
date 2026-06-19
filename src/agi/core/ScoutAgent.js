@@ -2,11 +2,13 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import ollama from './ollamaConnector.js';
+import { SearchEngine } from './SearchEngine.js';
 import { ProxyManager } from '../../services/proxyManager.js';
 
 export class ScoutAgent {
     constructor() {
         this.proxy = new ProxyManager();
+        this.searcher = new SearchEngine(process.env.SERPER_API_KEY || '');
         this.searchEndpoints = {
             github: 'https://api.github.com/search/repositories?q=topic:saas-strategy+language:javascript',
         };
@@ -14,8 +16,10 @@ export class ScoutAgent {
 
     async getSearchQueries() {
         const response = await ollama.generateThought("Give me 3 profitable SaaS strategy keywords");
-        if (!response) return ['saas', 'monetization', 'revenue'];
-        return response.split('\n').filter(k => k.trim());
+        if (response) return response.split('\n').filter(k => k.trim());
+        const web = await this.searcher.search("profitable SaaS monetization strategies 2026");
+        if (web.length > 0) return web.map(r => r.title).slice(0, 3);
+        return ['saas', 'monetization', 'revenue'];
     }
 
     async scout() {
