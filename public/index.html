@@ -1,17 +1,21 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Emerald Dashboard</title>
-    <style>body { font-family: sans-serif; padding: 20px; background: #000; color: #0f0; }</style>
+    <meta charset="UTF-8">
+    <title>SaaS Solution</title>
+    <meta name="description" content="Best SaaS tool for 2026">
 </head>
 <body>
-    <h1>Emerald Engine Status: <span id="status">Loading...</span></h1>
-    <div id="profits"></div>
-    <script>
-        fetch('/api/status').then(res => res.json()).then(data => {
-            document.getElementById('status').innerText = data.status;
-            document.getElementById('profits').innerHTML = JSON.stringify(data.profits, null, 2);
-        });
-    </script>
+    <header>
+        <h1>Welcome to the Future</h1>
+    </header>
+    <div class="ad-slot" style="background: #f0f0f0; height: 250px; text-align: center;">
+        <p>Ad Placeholder (728x90)</p>
+    </div>
+    <main id="content">
+    </main>
+    <div class="ad-slot" style="background: #f0f0f0; height: 250px; text-align: center;">
+        <p>Ad Placeholder (300x250)</p>
+    </div>
 </body>
 </html>

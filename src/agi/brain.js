@@ -13,10 +13,10 @@ async function saasFactory() {
         console.log("[FACTORY] Checking engine...");
 
         const response = await axios.post(OLLAMA_URL, {
-            model: 'qwen2.5:1.5b',
+            model: 'qwen2.5-coder:1.5b',
             prompt: 'Generate viral landing page code for SaaS, include ad placeholders.',
             stream: false
-        }, { timeout: 10000 });
+        }, { timeout: 300000 }); // 5 min for first load on ARM CPU
 
         console.log("[FACTORY] Engine Active. Generating Assets...");
 
