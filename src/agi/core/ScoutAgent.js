@@ -2,9 +2,11 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import ollama from './ollamaConnector.js';
+import { ProxyManager } from '../../services/proxyManager.js';
 
 export class ScoutAgent {
     constructor() {
+        this.proxy = new ProxyManager();
         this.searchEndpoints = {
             github: 'https://api.github.com/search/repositories?q=topic:saas-strategy+language:javascript',
         };
@@ -19,6 +21,8 @@ export class ScoutAgent {
     async scout() {
         console.log("[SCOUT] Searching for new strategies...");
         try {
+            const proxyName = await this.proxy.getRoute('stealth');
+            console.log(`[SCOUT] Routing through ${proxyName}`);
             const response = await axios.get(this.searchEndpoints.github);
             const items = response.data.items;
             

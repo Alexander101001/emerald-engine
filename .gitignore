@@ -7,6 +7,7 @@ dist/
 secure-tokens.json
 .vault/
 *.db
+.env.local
 .DS_Store
 .aegis/
 .tmp-emerald/

@@ -1,11 +1,19 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import config from '../config.js';
+import { ProxyManager } from './proxyManager.js';
 
 const TREND_SOURCES = config.TREND_SOURCES;
+const proxy = new ProxyManager();
+
+async function route(provider) {
+  const name = await proxy.getRoute(provider);
+  console.log(`[RESEARCH] via ${name}`);
+}
 
 async function fetchHackerNews() {
   try {
+    await route('scraping');
     const { data } = await axios.get('https://hacker-news.firebaseio.com/v0/topstories.json', {
       timeout: 10000,
     });
@@ -31,6 +39,7 @@ async function fetchHackerNews() {
 
 async function fetchReddit() {
   try {
+    await route('scraping');
     const { data } = await axios.get('https://www.reddit.com/r/startups/hot.json?limit=10', {
       headers: { 'User-Agent': 'emerald-research/1.0' },
       timeout: 10000,
@@ -49,6 +58,7 @@ async function fetchReddit() {
 
 async function fetchProductHunt() {
   try {
+    await route('scraping');
     const { data } = await axios.get('https://www.producthunt.com/', {
       timeout: 10000,
     });
