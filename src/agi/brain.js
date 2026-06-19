@@ -39,7 +39,6 @@ async function saasFactory() {
 
     const trends = await searchEngine.search("trending software tools 2026");
     if (!trends || trends.length === 0) {
-        console.warn("[FACTORY] No trends found, skipping this cycle.");
         return;
     }
 
