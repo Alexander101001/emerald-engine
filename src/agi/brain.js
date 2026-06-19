@@ -6,7 +6,6 @@ import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-// Load encrypted token vault (AES-256-GCM) — never logged or visible
 loadVault();
 
 async function generateAffiliatePages() {
@@ -45,20 +44,16 @@ async function generateAffiliatePages() {
     }
 }
 
-async function autonomousLoop() {
+async function autonomyCycle() {
     console.log("--- STARTING EMERALD EVOLUTION CYCLE ---");
-    
-    // 1. Cleanup
+
     exec('./scripts/cleanup.sh');
-    
-    // 2. Scout for Opportunities
+
     const scout = new ScoutAgent();
     await scout.scout();
-    
-    // 3. Generate Affiliate Pages
+
     await generateAffiliatePages();
-    
-    // 4. Sync to Cloud (GitHub/HuggingFace)
+
     try {
         await syncToCloud();
         console.log("Evolution Cycle Complete: Deployed to Cloud.");
@@ -67,6 +62,18 @@ async function autonomousLoop() {
     }
 }
 
-// Run every 6 hours
-setInterval(autonomousLoop, 21600000);
-autonomousLoop();
+async function runAutonomousCycle() {
+    try {
+        console.log(`[${new Date().toISOString()}] Starting Evolution Cycle...`);
+
+        await autonomyCycle();
+
+        console.log("Cycle finished. Sleeping for 15 minutes.");
+    } catch (e) {
+        console.error("Cycle error, but system stays alive:", e);
+    }
+
+    setTimeout(runAutonomousCycle, 900000);
+}
+
+runAutonomousCycle();
