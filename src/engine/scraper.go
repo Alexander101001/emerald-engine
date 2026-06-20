@@ -314,7 +314,7 @@ func discoverSkills(nicheKeyword string, maxPerSource int) []DiscoveredSkill {
 	skillRegistry.mu.Lock()
 	defer skillRegistry.mu.Unlock()
 
-	if cached, ok := skillRegistry.Skills[nicheKeyword]; ok && time.Since(skillRegistry.ScrapedAt) < 6*time.Hour {
+	if cached, ok := skillRegistry.Skills[nicheKeyword]; ok && time.Since(skillRegistry.ScrapedAt) < 1*time.Hour {
 		return cached
 	}
 

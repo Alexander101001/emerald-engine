@@ -90,7 +90,7 @@ func (o *OPROMetaOptimizer) writeTelemetryLog(tl TelemetryLog) {
 func (o *OPROMetaOptimizer) metaLoop() {
 	time.Sleep(10 * time.Minute)
 	o.executeMetaOptimizationLoop()
-	ticker := time.NewTicker(6 * time.Hour)
+	ticker := time.NewTicker(1 * time.Hour)
 	for range ticker.C {
 		o.executeMetaOptimizationLoop()
 	}

@@ -50,7 +50,7 @@ func initScraperAgent() *ScraperAgent {
 func (sa *ScraperAgent) scrapeLoop() {
 	time.Sleep(2 * time.Minute)
 	sa.scrapeRound()
-	ticker := time.NewTicker(6 * time.Hour)
+	ticker := time.NewTicker(1 * time.Hour)
 	for range ticker.C {
 		sa.scrapeRound()
 	}

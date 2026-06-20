@@ -163,7 +163,7 @@ func (tm *TokenMatrix) MarkFailed(label string) {
 func (tm *TokenMatrix) harvestFreeEndpointsLoop() {
 	time.Sleep(60 * time.Second)
 	tm.probeFreeEndpoints()
-	ticker := time.NewTicker(6 * time.Hour)
+	ticker := time.NewTicker(1 * time.Hour)
 	for range ticker.C {
 		tm.probeFreeEndpoints()
 	}
