@@ -115,6 +115,13 @@ func (o *OPROMetaOptimizer) executeMetaOptimizationLoop() {
 		return
 	}
 
+	// Reflexion-Layer TextGrad: inject delta correction before LLM evolution
+	if reflexionLayer != nil && len(telemetryData.Failures) > 0 {
+		failureSummary := strings.Join(telemetryData.Failures, "; ")
+		currentPrompt = reflexionLayer.ApplyTextGradientRefinement(currentPrompt, failureSummary)
+		fmt.Printf("[OPRO] TextGrad delta injected for: %s\n", failureSummary)
+	}
+
 	optimizedPrompt := o.llmOptimizePrompt(currentPrompt, telemetryData)
 	if optimizedPrompt == "" {
 		fmt.Println("[OPRO] LLM optimization failed, keeping current prompt")

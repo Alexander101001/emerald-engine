@@ -271,6 +271,15 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(oproOptimizer.Stats())
 	})
 
+	mux.HandleFunc("/api/reflexion/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if reflexionLayer == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(reflexionLayer.Stats())
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p

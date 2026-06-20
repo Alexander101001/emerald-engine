@@ -128,6 +128,20 @@ func (h *HeartbeatDaemon) pingAll() {
 			h.pingTarget(target.name, target.url)
 		}
 	}
+
+	// CRITIC external verification on deployed children
+	if reflexionLayer != nil && orchestrator != nil {
+		orchestrator.mu.Lock()
+		for name, child := range orchestrator.Children {
+			if child.URL != "" {
+				result := reflexionLayer.RunCriticExternalVerification(child.URL)
+				if verified, ok := result["verified"].(bool); ok && !verified {
+					fmt.Printf("[CRITIC] Verification failed for %s: %v\n", name, result["payload_status"])
+				}
+			}
+		}
+		orchestrator.mu.Unlock()
+	}
 }
 
 func (h *HeartbeatDaemon) pingTarget(name, url string) {

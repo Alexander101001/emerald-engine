@@ -1116,6 +1116,7 @@ func main() {
 	initAntiAdblock()
 	initSelfReflect()
 	initTemplateEngine()
+	initReflexionLayer()
 	initOPRO()
 
 	fmt.Printf("[ENGINE] Emerald Engine v6.0 — Autonomous Multi-Agent System\n")
