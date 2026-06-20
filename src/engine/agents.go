@@ -493,6 +493,32 @@ func (sec *SecurityAuditor) auditTask(req ApprovalRequest) bool {
 		}
 	}
 
+	// CRITIC external verification gate: refuse deploy tasks that fail endpoint check
+	if req.TaskType == "deploy" && reflexionLayer != nil {
+		if url, ok := req.Params["url"].(string); ok && url != "" {
+			result := reflexionLayer.RunCriticExternalVerification(url)
+			if verified, ok := result["verified"].(bool); ok && !verified {
+				sec.addLog(fmt.Sprintf("[SECURITY] CRITIC REJECTED deploy to %s: %v", url, result["payload_status"]))
+				if oproOptimizer != nil {
+					oproOptimizer.RecordOp("critic_verify", false, fmt.Sprintf("deploy_rejected_%s", url))
+				}
+				return false
+			}
+			sec.addLog(fmt.Sprintf("[SECURITY] CRITIC verified: %s", url))
+		}
+	}
+
+	if req.TaskType == "deploy" {
+		taskName, _ := req.Params["name"].(string)
+		if taskName != "" && reflexionLayer != nil {
+			memory := reflexionLayer.GetVerbalMemory()
+			if len(memory.GlobalCritiques) > 0 {
+				sec.addLog(fmt.Sprintf("[SECURITY] Child %s inherits %d reflexion critiques",
+					taskName, len(memory.GlobalCritiques)))
+			}
+		}
+	}
+
 	return true
 }
 

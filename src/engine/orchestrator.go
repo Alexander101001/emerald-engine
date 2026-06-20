@@ -300,6 +300,14 @@ func (o *Orchestrator) setSpaceSecrets(name string) error {
 		"CLOUDFLARE_API_TOKEN":  vaultGet("CLOUDFLARE_API_TOKEN", ""),
 	}
 
+	// Inject reflexion memory for immune execution inheritance
+	if reflexionLayer != nil {
+		vm := reflexionLayer.GetVerbalMemory()
+		if data, err := json.Marshal(vm); err == nil {
+			secrets["REFLEXION_MEMORY"] = string(data)
+		}
+	}
+
 	for key, val := range secrets {
 		if val == "" {
 			continue

@@ -45,6 +45,17 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+
+	// Inherited reflexion memory from factory for immune execution
+	if rm := os.Getenv("REFLEXION_MEMORY"); rm != "" {
+		var vm map[string]interface{}
+		if json.Unmarshal([]byte(rm), &vm) == nil {
+			if critiques, ok := vm["global_critiques"].([]interface{}); ok && len(critiques) > 0 {
+				log.Printf("[Reflexion] Inherited %d critiques from factory", len(critiques))
+			}
+		}
+	}
+
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/compare", compareHandler)
 	http.HandleFunc("/review", reviewHandler)
