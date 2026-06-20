@@ -104,6 +104,12 @@ func startWebhookServer(db *FulfillmentDB) {
 		})
 	})
 
+	mux.HandleFunc("/api/factory/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		stats := orchestratorStats()
+		json.NewEncoder(w).Encode(stats)
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p

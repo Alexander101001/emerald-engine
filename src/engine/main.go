@@ -819,6 +819,8 @@ func main() {
 	initTradingPlatform()
 	setupGitCredentials()
 
+	initOrchestrator()
+
 	fmt.Printf("[ENGINE] Emerald Engine v5.0 starting\n")
 	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d providers | Webhook: 8080\n", cycleDelay, len(llmProviders))
 
