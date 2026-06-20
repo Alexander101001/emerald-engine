@@ -122,24 +122,120 @@ func (h *HeartbeatDaemon) pingAll() {
 }
 
 func (h *HeartbeatDaemon) pingTarget(name, url string) {
-	h.simulateHumanVisit(name, url)
+	if chromiumPath != "" && h.pings%5 == 0 {
+		h.browserDeepVisit(name, url)
+	} else {
+		h.simulateHumanVisit(name, url)
+	}
+}
+
+func (h *HeartbeatDaemon) browserDeepVisit(name, url string) {
+	start := time.Now()
+
+	result := browserDeepPing(url)
+	if result.Error != "" {
+		fmt.Printf("[BROWSER] Deep ping failed for %s: %s\n", name, result.Error)
+		h.recordFailure(name, url, start)
+		return
+	}
+
+	readDelay := 5000 + time.Now().UnixNano()%20000
+	time.Sleep(time.Duration(readDelay) * time.Millisecond)
+
+	links := extractLinks(result.HTML, url)
+	subClicked := false
+	if len(links) > 0 && result.Screenshot != nil {
+		subURL := links[time.Now().UnixNano()%int64(len(links))]
+		subResult := browserDeepPing(subURL)
+		if subResult.Error == "" && subResult.StatusCode == 200 {
+			subClicked = true
+			subDelay := 3000 + time.Now().UnixNano()%7000
+			time.Sleep(time.Duration(subDelay) * time.Millisecond)
+		}
+	}
+
+	healthLatency := time.Since(start).Milliseconds()
+	_ = healthLatency
+
+	isChild := true
+	var childStatus string
+	if orchestrator != nil {
+		orchestrator.mu.Lock()
+		if c, ok := orchestrator.Children[name]; ok {
+			childStatus = c.Status
+		} else {
+			isChild = false
+		}
+		orchestrator.mu.Unlock()
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	record := HeartbeatRecord{
+		Name:     name,
+		URL:      url,
+		LastPing: time.Now(),
+		Latency:  result.DurationMs,
+		Status:   "alive",
+	}
+
+	if result.StatusCode >= 500 {
+		record.Status = "down"
+		record.FailCount = 1
+		h.failures++
+
+		for i, r := range h.records {
+			if r.Name == name {
+				record.FailCount = r.FailCount + 1
+				h.records[i] = record
+				goto maybeRebuild
+			}
+		}
+		h.records = append(h.records, record)
+
+	maybeRebuild:
+		if record.FailCount >= 3 && isChild {
+			go h.triggerRebuild(name)
+		}
+	} else {
+		if isChild && (childStatus == "crashed" || childStatus == "error" || childStatus == "stopped") {
+			go h.triggerRebuild(name)
+			return
+		}
+	}
+
+	if subClicked {
+		h.subClicks++
+	}
+
+	for i, r := range h.records {
+		if r.Name == name {
+			h.records[i] = record
+			return
+		}
+	}
+	h.records = append(h.records, record)
+	h.pings++
+
+	if h.pings%10 == 0 {
+		fmt.Printf("[REFLECT] Ping %d: %s | tokens: %d | clicks: %d\n",
+			h.pings, record.Status, len(tokenMatrix.slots), h.subClicks)
+	}
 }
 
 func (h *HeartbeatDaemon) simulateHumanVisit(name, url string) {
 	start := time.Now()
 
-	// Step 1: Primary page visit with full fingerprint
 	body, statusCode, _ := h.humanGet(url, false)
 	if body == "" {
 		h.recordFailure(name, url, start)
 		return
 	}
 
-	// Step 2: Simulate reading delay (5-25s)
 	readDelay := 5000 + time.Now().UnixNano()%20000
 	time.Sleep(time.Duration(readDelay) * time.Millisecond)
 
-	// Step 3: Extract links and click a random sub-link
 	links := extractLinks(body, url)
 	subClicked := false
 	if len(links) > 0 {
@@ -147,7 +243,6 @@ func (h *HeartbeatDaemon) simulateHumanVisit(name, url string) {
 		subBody, subCode, _ := h.humanGet(subURL, true)
 		if subBody != "" && subCode == 200 {
 			subClicked = true
-			// Sub-page reading delay (3-10s)
 			subDelay := 3000 + time.Now().UnixNano()%7000
 			time.Sleep(time.Duration(subDelay) * time.Millisecond)
 		}
@@ -216,7 +311,6 @@ func (h *HeartbeatDaemon) simulateHumanVisit(name, url string) {
 	h.records = append(h.records, record)
 	h.pings++
 
-	// Self-reflection logging (every 10th ping)
 	if h.pings%10 == 0 {
 		fmt.Printf("[REFLECT] Ping %d: %s | tokens: %d | clicks: %d\n",
 			h.pings, record.Status, len(tokenMatrix.slots), h.subClicks)
