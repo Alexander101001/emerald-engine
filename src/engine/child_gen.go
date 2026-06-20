@@ -46,6 +46,21 @@ func main() {
 		port = "8080"
 	}
 
+	// Meta Toolformer: autonomously discover and inject tools from factory
+	if engineURL := os.Getenv("ENGINE_URL"); engineURL != "" {
+		go func() {
+			resp, err := http.Get(engineURL + "/api/voyageur/tools")
+			if err == nil && resp.StatusCode == 200 {
+				var data map[string]interface{}
+				json.NewDecoder(resp.Body).Decode(&data)
+				resp.Body.Close()
+				if tools, ok := data["tools"].([]interface{}); ok {
+					log.Printf("[Toolformer] Discovered %d tools from factory library", len(tools))
+				}
+			}
+		}()
+	}
+
 	// Inherited reflexion memory from factory for immune execution
 	if rm := os.Getenv("REFLEXION_MEMORY"); rm != "" {
 		var vm map[string]interface{}

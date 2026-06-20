@@ -289,6 +289,18 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(voyageurEngine.Stats())
 	})
 
+	mux.HandleFunc("/api/voyageur/tools", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if voyageurEngine == nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"tools": []interface{}{}})
+			return
+		}
+		tools := voyageurEngine.GetAllToolSpecs()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"tools": tools,
+		})
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p

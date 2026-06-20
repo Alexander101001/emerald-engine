@@ -169,6 +169,31 @@ func (ve *VoyageurEngine) GetAllSkills() []string {
 	return names
 }
 
+type ToolSpec struct {
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	Usage       string `json:"usage"`
+	Successes   int    `json:"successes"`
+	SourceCode  string `json:"source_code,omitempty"`
+}
+
+func (ve *VoyageurEngine) GetAllToolSpecs() []ToolSpec {
+	ve.mu.Lock()
+	defer ve.mu.Unlock()
+
+	specs := make([]ToolSpec, 0, len(ve.compiledSkills))
+	for name, s := range ve.compiledSkills {
+		specs = append(specs, ToolSpec{
+			Name:       name,
+			Category:   s.Category,
+			Usage:      fmt.Sprintf("Registered skill %s with %d successes", name, s.Successes),
+			Successes:  s.Successes,
+			SourceCode: s.Code,
+		})
+	}
+	return specs
+}
+
 func (ve *VoyageurEngine) Stats() map[string]interface{} {
 	ve.mu.Lock()
 	defer ve.mu.Unlock()

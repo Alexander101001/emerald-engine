@@ -766,6 +766,27 @@ func genRobots() string { return fmt.Sprintf("User-agent: *\nAllow: /\nSitemap: 
 // ─── Git ───
 
 func gitCommitPush(files []string) error {
+	// CRITIC gate: verify children are healthy before outbound commit
+	if reflexionLayer != nil && orchestrator != nil {
+		orchestrator.mu.Lock()
+		for name, child := range orchestrator.Children {
+			if child.URL == "" {
+				continue
+			}
+			result := reflexionLayer.RunCriticExternalVerification(child.URL)
+			if verified, ok := result["verified"].(bool); ok && !verified {
+				orchestrator.mu.Unlock()
+				errMsg := fmt.Sprintf("CRITIC blocked commit: child %s at %s is unreachable", name, child.URL)
+				fmt.Fprintf(os.Stderr, "[CRITIC] %s\n", errMsg)
+				if oproOptimizer != nil {
+					oproOptimizer.RecordOp("critic_gate_commit", false, errMsg)
+				}
+				return fmt.Errorf(errMsg)
+			}
+		}
+		orchestrator.mu.Unlock()
+	}
+
 	args := append([]string{"add"}, files...)
 	if err := exec.Command("git", args...).Run(); err != nil {
 		return fmt.Errorf("add: %w", err)

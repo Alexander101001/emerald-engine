@@ -188,21 +188,59 @@ func (c *CognitiveCycle) analyze() {
 	if len(undeployed) > 0 {
 		fmt.Printf("[COG]   Undeployed niches: %v\n", undeployed)
 
-		// Tree of Thoughts: evaluate deployment paths for each undeployed niche
+		// Tree of Thoughts: evaluate deployment paths against real-time environment metrics
 		if voyageurEngine != nil {
 			var paths []ThoughtPath
+
+			antiBotFlags := 0.0
+			if heartbeatDaemon != nil {
+				stats := heartbeatDaemon.Stats()
+				fails := toInt(stats["failures"])
+				if fails > 5 {
+					antiBotFlags = 1.0 - (float64(fails) / 100.0)
+				} else {
+					antiBotFlags = 1.0
+				}
+			}
+
+			rateLimitHealth := 1.0
+			if tokenMatrix != nil {
+				stats := tokenMatrix.Stats()
+				if bySvc, ok := stats["by_service"].(map[string]interface{}); ok {
+					for _, svc := range bySvc {
+						if m, ok := svc.(map[string]interface{}); ok {
+							if m["active"].(float64) == 0 {
+								rateLimitHealth -= 0.2
+							}
+						}
+					}
+				}
+			}
+
+			computeBudget := 1.0
+			if resourceManager != nil {
+				stats := resourceManager.harvestStats()
+				active := toInt(stats["active_children"])
+				maxFree := 10
+				computeBudget = 1.0 - (float64(active) / float64(maxFree))
+				if computeBudget < 0 {
+					computeBudget = 0.1
+				}
+			}
+
 			for _, n := range niches[:minInt(len(niches), 5)] {
 				np := findNichePerformance(n.Keyword)
 				paths = append(paths, ThoughtPath{
 					Label:           n.Keyword,
-					StabilityRating: np.Uptime,
-					TokenEfficiency: np.Score / 100.0,
+					StabilityRating: np.Uptime * antiBotFlags,
+					TokenEfficiency: (np.Score / 100.0) * rateLimitHealth * computeBudget,
 				})
 			}
 			if len(paths) > 0 {
 				selected := voyageurEngine.EvaluateTreeOfThoughts(paths)
 				if selected != nil {
-					fmt.Printf("[COG]   ToT selected: %s\n", selected.Label)
+					fmt.Printf("[COG]   ToT selected: %s (anti-bot=%.2f, rate-limit=%.2f, compute=%.2f)\n",
+						selected.Label, antiBotFlags, rateLimitHealth, computeBudget)
 				}
 			}
 		}
