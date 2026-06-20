@@ -22,6 +22,13 @@ type Vault map[string]string
 
 var vault Vault
 
+var longTermMemory *LongTermMemory
+var shortTermMemory *ShortTermMemory
+var mcpRegistry *MCPRegistry
+var ragPipeline *RAGPipeline
+var agentCoordinator *AgentCoordinator
+var fulfillmentDB *FulfillmentDB
+
 func loadVault() Vault {
 	cmd := exec.Command("node", "src/engine/vault.js")
 	cmd.Env = append(os.Environ(), "MASTER_KEY="+os.Getenv("MASTER_KEY"))
@@ -807,6 +814,167 @@ func setupGitCredentials() {
 	}
 }
 
+// ─── MCP Tool Registration ───
+
+func registerMCPTools() {
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "generate_content",
+		Description: "Generate HTML content for a given niche",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			nicheName, _ := params["niche"].(string)
+			for _, n := range niches {
+				if n.Name == nicheName || n.Keyword == nicheName {
+					html := genIndex(n)
+					return map[string]interface{}{"html_length": len(html), "niche": n.Name}, nil
+				}
+			}
+			return nil, fmt.Errorf("niche not found: %s", nicheName)
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "search_memory",
+		Description: "Search long-term memory for relevant context",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			query, _ := params["query"].(string)
+			n := 5
+			if nParam, ok := params["n"].(float64); ok {
+				n = int(nParam)
+			}
+			results := longTermMemory.Search(query, n)
+			var entries []map[string]interface{}
+			for _, r := range results {
+				entries = append(entries, map[string]interface{}{
+					"id":      r.ID,
+					"content": r.Content[:minInt(len(r.Content), 200)],
+					"source":  r.Metadata["source"],
+					"score":   r.AccessCount,
+				})
+			}
+			return entries, nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "store_memory",
+		Description: "Store content in long-term memory",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			content, _ := params["content"].(string)
+			source, _ := params["source"].(string)
+			id := longTermMemory.Store(content, map[string]string{"source": source})
+			return map[string]interface{}{"id": id}, nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "list_skills",
+		Description: "List all discovered skills in the registry",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if skillRegistry == nil {
+				return []string{}, nil
+			}
+			skillRegistry.mu.RLock()
+			defer skillRegistry.mu.RUnlock()
+			var out []string
+			for niche, skills := range skillRegistry.Skills {
+				for _, s := range skills {
+					out = append(out, niche+": "+s.Name)
+					if len(out) >= 20 {
+						break
+					}
+				}
+			}
+			return out, nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "agent_status",
+		Description: "Get status of all autonomous agents",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if agentCoordinator == nil {
+				return map[string]string{"error": "coordinator not initialized"}, nil
+			}
+			return agentCoordinator.Stats(), nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "cf_kv_get",
+		Description: "Get value from Cloudflare Workers KV",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if cfAgent == nil {
+				return nil, fmt.Errorf("CF agent not initialized")
+			}
+			key, _ := params["key"].(string)
+			ns, _ := params["namespace"].(string)
+			return cfAgent.KVGet(ns, key)
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "cf_ai_run",
+		Description: "Run a model via Cloudflare Workers AI",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if cfAgent == nil {
+				return nil, fmt.Errorf("CF agent not initialized")
+			}
+			model, _ := params["model"].(string)
+			prompt, _ := params["prompt"].(string)
+			return cfAgent.AIRun(model, prompt)
+		},
+	})
+
+	mcpRegistry.RegisterDataSource(MCPDataSource{
+		Name:        "niches",
+		Description: "List all available niches",
+		Query: func(query string) (interface{}, error) {
+			var names []string
+			for _, n := range niches {
+				names = append(names, n.Name)
+			}
+			return names, nil
+		},
+	})
+
+	mcpRegistry.RegisterDataSource(MCPDataSource{
+		Name:        "children",
+		Description: "List all deployed child containers",
+		Query: func(query string) (interface{}, error) {
+			if orchestrator == nil {
+				return []string{}, nil
+			}
+			orchestrator.mu.Lock()
+			defer orchestrator.mu.Unlock()
+			var names []string
+			for _, c := range orchestrator.Children {
+				names = append(names, c.Name+" ("+c.Status+")")
+			}
+			return names, nil
+		},
+	})
+
+	mcpRegistry.RegisterDataSource(MCPDataSource{
+		Name:        "revenue",
+		Description: "Get current revenue stats",
+		Query: func(query string) (interface{}, error) {
+			fulfillmentDB.mu.RLock()
+			defer fulfillmentDB.mu.RUnlock()
+			return map[string]interface{}{
+				"total":  fulfillmentDB.totalRevenue(),
+				"sales":  len(fulfillmentDB.Sales),
+			}, nil
+		},
+	})
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // ─── Main ───
 
 func main() {
@@ -814,8 +982,8 @@ func main() {
 	vault = loadVault()
 	initLLMProviders()
 
-	db := loadFulfillmentDB("emerald_sales.json")
-	startWebhookServer(db)
+	fulfillmentDB = loadFulfillmentDB("emerald_sales.json")
+	startWebhookServer(fulfillmentDB)
 	initTradingPlatform()
 	setupGitCredentials()
 
@@ -823,7 +991,32 @@ func main() {
 	initResourceManager()
 	startCognitiveLoop()
 
-	fmt.Printf("[ENGINE] Emerald Engine v6.0 — Cross-Platform Factory\n")
+	longTermMemory = NewLongTermMemory("emerald_memory.json")
+	shortTermMemory = NewShortTermMemory(30 * time.Minute)
+	mcpRegistry = NewMCPRegistry()
+	ragPipeline = NewRAGPipeline(longTermMemory, shortTermMemory)
+
+	registerMCPTools()
+	agentCoordinator = NewAgentCoordinator(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline)
+
+	agentCoordinator.RegisterAgent("creator", initCreatorAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
+	agentCoordinator.RegisterAgent("traffic", initTrafficAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
+	agentCoordinator.RegisterAgent("security", initSecurityAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
+	agentCoordinator.RegisterAgent("monetization", initMonetizationAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
+
+	initCFAgent()
+
+	for _, a := range agentCoordinator.Agents {
+		a.Start(15 * time.Minute)
+	}
+
+	if cfAgent != nil && cfAgent.initialized {
+		cfAgent.mu.Lock()
+		fmt.Printf("[CF_AGENT] Cloudflare agent active\n")
+		cfAgent.mu.Unlock()
+	}
+
+	fmt.Printf("[ENGINE] Emerald Engine v6.0 — Autonomous Multi-Agent System\n")
 	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d | Factory: %s | Cognitive: active\n",
 		cycleDelay, len(llmProviders),
 		func() string {
@@ -933,10 +1126,10 @@ func main() {
 
 		elapsed := time.Since(start)
 		summary := fmt.Sprintf("Cycle %d: %d pages, %d bytes, %v", i, len(outputFiles), total, elapsed)
-		revenue := db.totalRevenue()
+		revenue := fulfillmentDB.totalRevenue()
 		telegramSend(fmt.Sprintf(
-			"<b>🤖 Emerald Engine v5.0</b>\n%s\nNiche: %s %s\nSales: %d | Revenue: $%.2f\nRemotes: origin + huggingface",
-			summary, niche.Emoji, niche.Name, len(db.Sales), revenue,
+			"<b>🤖 Emerald Engine v6.0</b>\n%s\nNiche: %s %s\nSales: %d | Revenue: $%.2f\nRemotes: origin + huggingface",
+			summary, niche.Emoji, niche.Name, len(fulfillmentDB.Sales), revenue,
 		))
 
 		sleep := cycleDelay*time.Second - elapsed

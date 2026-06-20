@@ -134,6 +134,55 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(resourceManager.harvestStats())
 	})
 
+	mux.HandleFunc("/api/agents/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if agentCoordinator == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(agentCoordinator.Stats())
+	})
+
+	mux.HandleFunc("/api/mcp/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if mcpRegistry == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(mcpRegistry.Stats())
+	})
+
+	mux.HandleFunc("/api/mcp/execute", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		var req struct {
+			Tool   string                 `json:"tool"`
+			Params map[string]interface{} `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": "bad request"})
+			return
+		}
+		result, err := mcpRegistry.ExecuteTool(req.Tool, req.Params)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"result": result})
+	})
+
+	mux.HandleFunc("/api/cf-agent/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if cfAgent == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(cfAgent.Stats())
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p

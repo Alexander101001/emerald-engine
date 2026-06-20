@@ -198,6 +198,13 @@ func (c *CognitiveCycle) analyze() {
 		c.Insights = c.Insights[len(c.Insights)-100:]
 	}
 	c.mu.Unlock()
+
+	// Agent coordination: broadcast analysis to agents
+	if agentCoordinator != nil {
+		insightShort := fmt.Sprintf("COG: analyzed %d niches, %d undeployed", len(nichePerformance), len(undeployed))
+		agentCoordinator.Broadcast(insightShort)
+		fmt.Printf("[COG]   Agents notified: %s\n", insightShort)
+	}
 }
 
 // Write — regenerate child code with optimized composition
@@ -276,6 +283,11 @@ func (c *CognitiveCycle) launch() {
 		c.Insights = c.Insights[len(c.Insights)-100:]
 	}
 	c.mu.Unlock()
+
+	// Notify agents of deployment
+	if agentCoordinator != nil {
+		agentCoordinator.Broadcast("COG: new child deployed")
+	}
 }
 
 // Monetize — trigger revenue actions (ad placement optimization, affiliate rotations)
@@ -308,6 +320,11 @@ func (c *CognitiveCycle) monetize() {
 	c.mu.Unlock()
 
 	fmt.Printf("[COG]   %s\n", insight)
+
+	// Notify monetization agent
+	if monetizationAgent != nil {
+		monetizationAgent.STM.Set("cog_revenue", fmt.Sprintf("%.2f", revenue))
+	}
 }
 
 // Reinvest — allocate resources for growth (scale up high-performing niches)
