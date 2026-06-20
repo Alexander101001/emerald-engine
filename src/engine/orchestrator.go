@@ -22,6 +22,8 @@ type ChildSpace struct {
 	DeployedAt time.Time `json:"deployed_at"`
 	LastHealth time.Time `json:"last_health"`
 	ErrorCount int       `json:"error_count"`
+	Mode       string    `json:"mode"` // binary or composite
+	Skills     int       `json:"skills"`
 }
 
 type Orchestrator struct {
@@ -147,6 +149,12 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 	spaceName := "emerald-" + niche.Keyword
 	fullName := o.Username + "/" + spaceName
 
+	skills := searchGitHubSkills(niche.Keyword, 3)
+	mode := "binary"
+	if len(skills) >= 2 {
+		mode = "composite"
+	}
+
 	exists, err := o.spaceExists(spaceName)
 	if err != nil {
 		return fmt.Errorf("check exists: %w", err)
@@ -164,7 +172,11 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 		return fmt.Errorf("set secrets: %w", err)
 	}
 
-	err = o.uploadChildCode(spaceName, niche)
+	if mode == "composite" {
+		err = o.uploadCompositeChild(spaceName, niche, skills)
+	} else {
+		err = o.uploadChildCode(spaceName, niche, skills)
+	}
 	if err != nil {
 		return fmt.Errorf("upload code: %w", err)
 	}
@@ -181,6 +193,8 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 		Status:     "deploying",
 		URL:        fmt.Sprintf("https://%s.hf.space", fullName),
 		DeployedAt: time.Now(),
+		Mode:       mode,
+		Skills:     len(skills),
 	}
 
 	o.mu.Lock()
@@ -188,7 +202,7 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 	o.mu.Unlock()
 	o.saveChildren()
 
-	fmt.Printf("[ORCH] Child %s deployed at %s\n", spaceName, child.URL)
+	fmt.Printf("[ORCH] Child %s deployed | mode=%s skills=%d | %s\n", spaceName, mode, len(skills), child.URL)
 	return nil
 }
 
@@ -290,7 +304,7 @@ func (o *Orchestrator) restartSpace(name string) error {
 	return err
 }
 
-func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche) error {
+func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche, skills []GHRepo) error {
 	tmpDir, err := os.MkdirTemp("", "child-"+niche.Keyword)
 	if err != nil {
 		return err
@@ -298,7 +312,7 @@ func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche) error {
 	defer os.RemoveAll(tmpDir)
 
 	code := generateChildCode(niche)
-	docker := generateChildDockerfile(niche)
+	docker := generateChildDockerfile(niche, skills)
 	readme := generateChildReadme(niche)
 
 	os.WriteFile(filepath.Join(tmpDir, "child.go"), []byte(code), 0644)
@@ -306,22 +320,44 @@ func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche) error {
 	os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte(readme), 0644)
 	os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module child\n\ngo 1.26.4\n"), 0644)
 
-	initCmd := exec.Command("git", "init")
-	initCmd.Dir = tmpDir
-	initCmd.Run()
+	if err := o.gitInitPush(tmpDir, spaceName, niche.Name); err != nil {
+		return err
+	}
+	fmt.Printf("[ORCH] Binary child pushed to %s (%d bytes, %d skills)\n", spaceName, len(code)+len(docker), len(skills))
+	return nil
+}
 
-	addCmd := exec.Command("git", "add", "-A")
-	addCmd.Dir = tmpDir
-	addCmd.Run()
+func (o *Orchestrator) uploadCompositeChild(spaceName string, niche Niche, skills []GHRepo) error {
+	tmpDir, err := os.MkdirTemp("", "composite-"+niche.Keyword)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
 
-	commitCmd := exec.Command("git", "commit", "-m", "initial deploy: "+niche.Name)
-	commitCmd.Dir = tmpDir
-	commitCmd.Run()
+	docker := generateCompositeDockerfile(skills)
+	sup := generateCompositeSupervisord()
+	readme := generateChildReadme(niche)
+
+	os.WriteFile(filepath.Join(tmpDir, "Dockerfile"), []byte(docker), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "supervisord.conf"), []byte(sup), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte(readme), 0644)
+
+	if err := o.gitInitPush(tmpDir, spaceName, niche.Name); err != nil {
+		return err
+	}
+	fmt.Printf("[ORCH] Composite child pushed to %s (%d skills injected)\n", spaceName, len(skills))
+	return nil
+}
+
+func (o *Orchestrator) gitInitPush(tmpDir, spaceName, nicheName string) error {
+	exec.Command("git", "init").Dir = tmpDir
+	exec.Command("git", "config", "user.email", "factory@emerald.engine").Dir = tmpDir
+	exec.Command("git", "config", "user.name", "Emerald Factory").Dir = tmpDir
+	exec.Command("git", "add", "-A").Dir = tmpDir
+	exec.Command("git", "commit", "-m", "deploy: "+nicheName).Dir = tmpDir
 
 	remoteURL := fmt.Sprintf("https://%s:%s@huggingface.co/spaces/%s/%s", o.Username, o.Token, o.Username, spaceName)
-	remoteCmd := exec.Command("git", "remote", "add", "origin", remoteURL)
-	remoteCmd.Dir = tmpDir
-	remoteCmd.Run()
+	exec.Command("git", "remote", "add", "origin", remoteURL).Dir = tmpDir
 
 	pushCmd := exec.Command("git", "push", "-u", "origin", "main", "--force")
 	pushCmd.Dir = tmpDir
@@ -329,7 +365,6 @@ func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche) error {
 	if err != nil {
 		return fmt.Errorf("push failed: %s: %w", string(out), err)
 	}
-	fmt.Printf("[ORCH] Code pushed to %s (%d bytes)\n", spaceName, len(code)+len(docker))
 	return nil
 }
 
@@ -426,22 +461,31 @@ func orchestratorStats() map[string]interface{} {
 		}
 	}
 	deployed := len(orchestrator.Children)
-	healthy := 0
+	healthy, binaryCount, compositeCount, totalSkills := 0, 0, 0, 0
 	orchestrator.mu.Lock()
 	for _, c := range orchestrator.Children {
 		if c.Status == "running" {
 			healthy++
 		}
+		if c.Mode == "composite" {
+			compositeCount++
+		} else {
+			binaryCount++
+		}
+		totalSkills += c.Skills
 	}
 	orchestrator.mu.Unlock()
 	return map[string]interface{}{
-		"status":         "active",
-		"niche_count":    len(niches),
-		"children":       deployed,
-		"healthy":        healthy,
-		"remaining":      len(niches) - deployed,
-		"deploy_cycle":   "6 hours",
-		"health_cycle":   "15 minutes",
+		"status":          "active",
+		"niche_count":     len(niches),
+		"children":        deployed,
+		"healthy":         healthy,
+		"binary_children": binaryCount,
+		"composite_spaces": compositeCount,
+		"total_skills":    totalSkills,
+		"remaining":       len(niches) - deployed,
+		"deploy_cycle":    "6 hours",
+		"health_cycle":    "15 minutes",
 	}
 }
 

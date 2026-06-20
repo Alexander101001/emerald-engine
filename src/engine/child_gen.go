@@ -441,7 +441,39 @@ func childStructuredData(d ChildData, pageType string) string {
 	return ""
 }
 
-func generateChildDockerfile(niche Niche) string {
+func generateChildDockerfile(niche Niche, skills []GHRepo) string {
+	skillLines := ""
+	for i, s := range skills {
+		skillLines += fmt.Sprintf("RUN git clone --depth 1 %s /opt/skill_%d 2>/dev/null || true\n", s.CloneURL, i)
+	}
+
+	skillEnv := ""
+	if len(skills) > 0 {
+		skillEnv = "ENV INJECTED_SKILLS="
+		for i := range skills {
+			if i > 0 {
+				skillEnv += ","
+			}
+			skillEnv += fmt.Sprintf("/opt/skill_%d", i)
+		}
+		skillEnv += "\n"
+	}
+
+	if len(skills) > 0 {
+		return fmt.Sprintf(`FROM golang:1.26-alpine AS builder
+WORKDIR /app
+COPY go.mod child.go ./
+RUN go build -o child .
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates git
+%sWORKDIR /app
+COPY --from=builder /app/child .
+%sEXPOSE 8080
+CMD ["./child"]
+`, skillEnv, skillLines)
+	}
+
 	return `FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY go.mod child.go ./
@@ -454,6 +486,38 @@ COPY --from=builder /app/child .
 EXPOSE 8080
 CMD ["./child"]
 `
+}
+
+func generateCompositeDockerfile(skills []GHRepo) string {
+	docker := `FROM python:3.12-slim
+RUN apt-get update && apt-get install -y git supervisor && rm -rf /var/lib/apt/lists/*
+RUN pip install huggingface-hub requests
+
+`
+	for i, s := range skills {
+		docker += fmt.Sprintf("RUN git clone --depth 1 %s /opt/skill_%d 2>/dev/null || true\n", s.CloneURL, i)
+	}
+
+	env := "ENV INJECTED_SKILLS="
+	for i := range skills {
+		if i > 0 {
+			env += ","
+		}
+		env += fmt.Sprintf("/opt/skill_%d", i)
+	}
+	env += "\n"
+
+	docker += env + `
+COPY . /app
+WORKDIR /app
+
+RUN mkdir -p /var/log/supervisor
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+EXPOSE 7860
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+`
+	return docker
 }
 
 func generateChildReadme(niche Niche) string {
