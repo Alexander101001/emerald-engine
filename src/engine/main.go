@@ -1144,6 +1144,7 @@ func main() {
 	initVoyageurEngine()
 	initSwarmOrchestrator()
 	initArchivistAgent()
+	initIntelligence()
 	initDualSystem()
 	initOPRO()
 

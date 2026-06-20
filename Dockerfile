@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y \
     && update-ca-certificates
 WORKDIR /app
 COPY --from=builder /build/emerald-engine ./emerald-engine
+COPY init_intelligence.sh ./init_intelligence.sh
+RUN chmod +x ./init_intelligence.sh
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY src/engine/vault.js ./src/engine/vault.js
 COPY api_key ./api_key

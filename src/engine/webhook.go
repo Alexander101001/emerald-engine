@@ -319,6 +319,36 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(dualSystem.Stats())
 	})
 
+	mux.HandleFunc("/api/intelligence/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if intelligence != nil {
+			json.NewEncoder(w).Encode(intelligence.Stats())
+		} else {
+			json.NewEncoder(w).Encode(map[string]string{"error": "intelligence not initialized"})
+		}
+	})
+	mux.HandleFunc("/api/intelligence/generate", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if intelligence == nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": "intelligence not initialized"})
+			return
+		}
+		prompt := r.URL.Query().Get("prompt")
+		if prompt == "" {
+			json.NewEncoder(w).Encode(map[string]string{"error": "missing prompt param"})
+			return
+		}
+		text, err := intelligence.Generate(prompt, 512)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"model":  intelligence.model,
+			"prompt": prompt,
+			"output": text,
+		})
+	})
 	mux.HandleFunc("/api/archivist/stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if archivistAgent != nil {
