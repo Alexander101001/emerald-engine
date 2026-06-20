@@ -1,0 +1,17 @@
+name: Heartbeat
+on:
+  schedule:
+    - cron: '*/25 * * * *'
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping All Children
+        run: |
+          curl -sf -o /dev/null -w "%{http_code}" https://huggingface.co/spaces/AlexanderGreater90/emerald-engine/health || true
+      - name: Heartbeat callback
+        run: |
+          curl -sf -X POST https://emerald-engine.com/api/heartbeat/callback \
+            -H "Content-Type: application/json" \
+            -d '{"source":"github-actions","ts":'"$(date +%s)"'}' || true

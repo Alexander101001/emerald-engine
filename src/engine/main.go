@@ -954,6 +954,55 @@ func registerMCPTools() {
 		},
 	})
 
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "deploy_token",
+		Description: "Generate a scope-limited deployment token for a child container",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			childName, _ := params["child"].(string)
+			if childName == "" {
+				return nil, fmt.Errorf("child name required")
+			}
+			if shield == nil {
+				return nil, fmt.Errorf("shield not initialized")
+			}
+			tok := shield.GenerateDeploymentToken(childName)
+			return map[string]interface{}{
+				"token":      tok.Token,
+				"id":         tok.ID,
+				"scope":      tok.Scope,
+				"expires_at": tok.ExpiresAt.Format(time.RFC3339),
+			}, nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "heartbeat_now",
+		Description: "Trigger immediate heartbeat ping of all children",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if heartbeatDaemon == nil {
+				return nil, fmt.Errorf("heartbeat not initialized")
+			}
+			go heartbeatDaemon.pingAll()
+			return map[string]string{"status": "triggered"}, nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "token_rotate",
+		Description: "Manually trigger token rotation for a service",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			service, _ := params["service"].(string)
+			if service == "" || tokenMatrix == nil {
+				return nil, fmt.Errorf("service required or matrix not initialized")
+			}
+			tok, err := tokenMatrix.GetToken(service)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{"token": tok[:8] + "..."}, nil
+		},
+	})
+
 	mcpRegistry.RegisterDataSource(MCPDataSource{
 		Name:        "revenue",
 		Description: "Get current revenue stats",
@@ -1004,6 +1053,8 @@ func main() {
 	agentCoordinator.RegisterAgent("security", initSecurityAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
 	agentCoordinator.RegisterAgent("monetization", initMonetizationAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
 
+	// Scraper agent runs as standalone — registered by initScraperAgent()
+
 	initCFAgent()
 
 	for _, a := range agentCoordinator.Agents {
@@ -1015,6 +1066,11 @@ func main() {
 		fmt.Printf("[CF_AGENT] Cloudflare agent active\n")
 		cfAgent.mu.Unlock()
 	}
+
+	initTokenMatrix()
+	initHeartbeatDaemon()
+	initScraperAgent()
+	initShield()
 
 	fmt.Printf("[ENGINE] Emerald Engine v6.0 — Autonomous Multi-Agent System\n")
 	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d | Factory: %s | Cognitive: active\n",

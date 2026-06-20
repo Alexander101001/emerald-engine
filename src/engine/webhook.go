@@ -183,6 +183,52 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(cfAgent.Stats())
 	})
 
+	mux.HandleFunc("/api/tokens/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if tokenMatrix == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(tokenMatrix.Stats())
+	})
+
+	mux.HandleFunc("/api/heartbeat/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if heartbeatDaemon == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(heartbeatDaemon.Stats())
+	})
+
+	mux.HandleFunc("/api/heartbeat/callback", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Printf("[HEARTBEAT] Callback received\n")
+		w.Write([]byte(`{"received":true}`))
+	})
+
+	mux.HandleFunc("/api/scraper-agent/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if scraperAgent == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(scraperAgent.Stats())
+	})
+
+	mux.HandleFunc("/api/shield/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if shield == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(shield.Stats())
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p
