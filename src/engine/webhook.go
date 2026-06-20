@@ -95,12 +95,21 @@ func startWebhookServer(db *FulfillmentDB) {
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		children := 0
+		if orchestrator != nil {
+			orchestrator.mu.Lock()
+			children = len(orchestrator.Children)
+			orchestrator.mu.Unlock()
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":   "ok",
-			"time":     time.Now().Unix(),
-			"sales":    len(db.Sales),
-			"revenue":  db.totalRevenue(),
-			"version":  "5.0",
+			"status":          "ok",
+			"time":            time.Now().Unix(),
+			"sales":           len(db.Sales),
+			"revenue":         db.totalRevenue(),
+			"version":         "6.0",
+			"factory":         orchestrator != nil && orchestrator.Token != "",
+			"cognitive_cycle": getCycleNum(),
+			"children":        children,
 		})
 	})
 
@@ -108,6 +117,21 @@ func startWebhookServer(db *FulfillmentDB) {
 		w.Header().Set("Content-Type", "application/json")
 		stats := orchestratorStats()
 		json.NewEncoder(w).Encode(stats)
+	})
+
+	mux.HandleFunc("/api/cognitive/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cognitiveStats())
+	})
+
+	mux.HandleFunc("/api/scraper/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(scraperStats())
+	})
+
+	mux.HandleFunc("/api/resource/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resourceManager.harvestStats())
 	})
 
 	port := "8080"

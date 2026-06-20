@@ -820,9 +820,16 @@ func main() {
 	setupGitCredentials()
 
 	initOrchestrator()
+	initResourceManager()
+	startCognitiveLoop()
 
-	fmt.Printf("[ENGINE] Emerald Engine v5.0 starting\n")
-	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d providers | Webhook: 8080\n", cycleDelay, len(llmProviders))
+	fmt.Printf("[ENGINE] Emerald Engine v6.0 — Cross-Platform Factory\n")
+	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d | Factory: %s | Cognitive: active\n",
+		cycleDelay, len(llmProviders),
+		func() string {
+			if orchestrator != nil && orchestrator.Token != "" { return "active" }; return "disabled"
+		}(),
+	)
 
 	for _, dir := range []string{"public/blog", "public/tools", "public/downloads", "public/trading"} {
 		os.MkdirAll(dir, 0755)

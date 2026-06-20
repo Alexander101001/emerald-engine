@@ -149,9 +149,15 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 	spaceName := "emerald-" + niche.Keyword
 	fullName := o.Username + "/" + spaceName
 
-	skills := searchGitHubSkills(niche.Keyword, 3)
+	if !resourceManager.shouldDeploy() {
+		return fmt.Errorf("resource budget exceeded — waiting for capacity")
+	}
+
+	skills := getBestSkillsForFusion(niche.Keyword, 20)
 	mode := "binary"
-	if len(skills) >= 2 {
+	if len(skills) >= 5 {
+		mode = "fusion"
+	} else if len(skills) >= 2 {
 		mode = "composite"
 	}
 
@@ -172,9 +178,18 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 		return fmt.Errorf("set secrets: %w", err)
 	}
 
-	if mode == "composite" {
+	switch mode {
+	case "fusion":
+		fused := compileFusionDockerfile(skills, niche)
+		if fused != nil {
+			err = o.uploadFusionChild(spaceName, niche, fused)
+		} else {
+			err = o.uploadChildCode(spaceName, niche, skills)
+			mode = "binary"
+		}
+	case "composite":
 		err = o.uploadCompositeChild(spaceName, niche, skills)
-	} else {
+	default:
 		err = o.uploadChildCode(spaceName, niche, skills)
 	}
 	if err != nil {
@@ -185,6 +200,8 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 	if err != nil {
 		return fmt.Errorf("restart: %w", err)
 	}
+
+	resourceManager.recordDeployment(spaceName, resourceManager.recommendTierForNiche(niche.Keyword))
 
 	child := &ChildSpace{
 		Name:       spaceName,
@@ -202,7 +219,7 @@ func (o *Orchestrator) deployChild(niche Niche) error {
 	o.mu.Unlock()
 	o.saveChildren()
 
-	fmt.Printf("[ORCH] Child %s deployed | mode=%s skills=%d | %s\n", spaceName, mode, len(skills), child.URL)
+	fmt.Printf("[ORCH] Child %s deployed | mode=%s skills=%d components | %s\n", spaceName, mode, len(skills), child.URL)
 	return nil
 }
 
@@ -304,7 +321,7 @@ func (o *Orchestrator) restartSpace(name string) error {
 	return err
 }
 
-func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche, skills []GHRepo) error {
+func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche, skills []DiscoveredSkill) error {
 	tmpDir, err := os.MkdirTemp("", "child-"+niche.Keyword)
 	if err != nil {
 		return err
@@ -327,7 +344,30 @@ func (o *Orchestrator) uploadChildCode(spaceName string, niche Niche, skills []G
 	return nil
 }
 
-func (o *Orchestrator) uploadCompositeChild(spaceName string, niche Niche, skills []GHRepo) error {
+func (o *Orchestrator) uploadFusionChild(spaceName string, niche Niche, fused *FusedContainer) error {
+	tmpDir, err := os.MkdirTemp("", "fusion-"+niche.Keyword)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	code := generateChildCode(niche)
+
+	if err := fused.WriteFiles(tmpDir); err != nil {
+		return fmt.Errorf("write fusion files: %w", err)
+	}
+	os.WriteFile(filepath.Join(tmpDir, "child.go"), []byte(code), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module child\n\ngo 1.26.4\n"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte(generateChildReadme(niche)), 0644)
+
+	if err := o.gitInitPush(tmpDir, spaceName, niche.Name); err != nil {
+		return err
+	}
+	fmt.Printf("[ORCH] Fusion child pushed to %s (%d components)\n", spaceName, len(fused.Components))
+	return nil
+}
+
+func (o *Orchestrator) uploadCompositeChild(spaceName string, niche Niche, skills []DiscoveredSkill) error {
 	tmpDir, err := os.MkdirTemp("", "composite-"+niche.Keyword)
 	if err != nil {
 		return err
@@ -461,31 +501,35 @@ func orchestratorStats() map[string]interface{} {
 		}
 	}
 	deployed := len(orchestrator.Children)
-	healthy, binaryCount, compositeCount, totalSkills := 0, 0, 0, 0
+	healthy, binaryCount, compositeCount, fusionCount, totalSkills := 0, 0, 0, 0, 0
 	orchestrator.mu.Lock()
 	for _, c := range orchestrator.Children {
 		if c.Status == "running" {
 			healthy++
 		}
-		if c.Mode == "composite" {
+		switch c.Mode {
+		case "fusion":
+			fusionCount++
+		case "composite":
 			compositeCount++
-		} else {
+		default:
 			binaryCount++
 		}
 		totalSkills += c.Skills
 	}
 	orchestrator.mu.Unlock()
 	return map[string]interface{}{
-		"status":          "active",
-		"niche_count":     len(niches),
-		"children":        deployed,
-		"healthy":         healthy,
-		"binary_children": binaryCount,
+		"status":           "active",
+		"niche_count":      len(niches),
+		"children":         deployed,
+		"healthy":          healthy,
+		"binary_children":  binaryCount,
 		"composite_spaces": compositeCount,
-		"total_skills":    totalSkills,
-		"remaining":       len(niches) - deployed,
-		"deploy_cycle":    "6 hours",
-		"health_cycle":    "15 minutes",
+		"fusion_spaces":    fusionCount,
+		"total_skills":     totalSkills,
+		"remaining":        len(niches) - deployed,
+		"deploy_cycle":     "6 hours",
+		"health_cycle":     "15 minutes",
 	}
 }
 

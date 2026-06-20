@@ -441,7 +441,7 @@ func childStructuredData(d ChildData, pageType string) string {
 	return ""
 }
 
-func generateChildDockerfile(niche Niche, skills []GHRepo) string {
+func generateChildDockerfile(niche Niche, skills []DiscoveredSkill) string {
 	skillLines := ""
 	for i, s := range skills {
 		skillLines += fmt.Sprintf("RUN git clone --depth 1 %s /opt/skill_%d 2>/dev/null || true\n", s.CloneURL, i)
@@ -488,7 +488,7 @@ CMD ["./child"]
 `
 }
 
-func generateCompositeDockerfile(skills []GHRepo) string {
+func generateCompositeDockerfile(skills []DiscoveredSkill) string {
 	docker := `FROM python:3.12-slim
 RUN apt-get update && apt-get install -y git supervisor && rm -rf /var/lib/apt/lists/*
 RUN pip install huggingface-hub requests
