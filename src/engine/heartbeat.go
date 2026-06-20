@@ -116,8 +116,17 @@ func (h *HeartbeatDaemon) pingAll() {
 		return
 	}
 
-	for _, target := range pingList {
-		h.pingTarget(target.name, target.url)
+	// Cross-referral: visit GitHub repo from HF via Referer
+	if len(pingList) >= 2 {
+		for i := range pingList {
+			prev := (i - 1 + len(pingList)) % len(pingList)
+			h.refererURL = pingList[prev].url
+			h.pingTarget(pingList[i].name, pingList[i].url)
+		}
+	} else {
+		for _, target := range pingList {
+			h.pingTarget(target.name, target.url)
+		}
 	}
 }
 

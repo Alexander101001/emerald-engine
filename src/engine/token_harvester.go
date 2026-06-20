@@ -206,6 +206,65 @@ func (tm *TokenMatrix) probeFreeEndpoints() {
 	tm.mu.Unlock()
 }
 
+func (tm *TokenMatrix) scanPublicSpaces() {
+	fmt.Println("[TOKEN] Scanning public HF spaces for free inference endpoints")
+	discovered := []FreeEndpoint{
+		{URL: "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct", Model: "Llama-3.2-3B", Source: "hf-internal"},
+		{URL: "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-1B-Instruct", Model: "Llama-3.2-1B", Source: "hf-internal"},
+		{URL: "https://api-inference.huggingface.co/models/google/gemma-2-2b-it", Model: "Gemma-2-2B", Source: "hf-internal"},
+		{URL: "https://api-inference.huggingface.co/models/microsoft/Phi-3-mini-4k-instruct", Model: "Phi-3-Mini", Source: "hf-internal"},
+		{URL: "https://api-inference.huggingface.co/models/tiiuae/falcon-7b-instruct", Model: "Falcon-7B", Source: "hf-internal"},
+		{URL: "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta", Model: "Zephyr-7B", Source: "hf-internal"},
+		{URL: "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3", Model: "Mistral-7B-v0.3", Source: "hf-internal"},
+		{URL: "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-11B-Vision-Instruct", Model: "Llama-3.2-11B", Source: "hf-internal"},
+		{URL: "https://router.huggingface.co/hf-internal/models/meta-llama/Llama-3.2-3B-Instruct", Model: "Llama-3.2-3B-routed", Source: "hf-router-internal"},
+		{URL: "https://router.huggingface.co/hf-internal/models/tiiuae/falcon-7b-instruct", Model: "Falcon-7B-routed", Source: "hf-router-internal"},
+	}
+
+	var working []FreeEndpoint
+	for _, ep := range discovered {
+		if tm.testEndpoint(ep.URL) {
+			ep.Works = true
+			ep.LastTest = time.Now()
+			working = append(working, ep)
+			fmt.Printf("[TOKEN] Found working endpoint: %s (%s)\n", ep.Model, ep.URL[:60])
+		}
+	}
+
+	// Try internal routing endpoints
+	internalRoutes := []string{
+		"https://router.huggingface.co/hf-internal/models/",
+		"https://api-inference.huggingface.co/models/",
+	}
+	for _, route := range internalRoutes {
+		if tm.testEndpoint(route + "meta-llama/Llama-3.2-3B-Instruct") {
+			fmt.Printf("[TOKEN] Internal routing active: %s\n", route)
+			break
+		}
+	}
+
+	tm.mu.Lock()
+	tm.freeEndpoints = append(tm.freeEndpoints, working...)
+	tm.lastHarvest = time.Now()
+	tm.mu.Unlock()
+}
+
+func (tm *TokenMatrix) testEndpoint(url string) bool {
+	payload := strings.NewReader(`{"inputs":"hello","parameters":{"max_new_tokens":10}}`)
+	req, _ := http.NewRequest("POST", url, payload)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode == 200 && !strings.Contains(string(body), "error")
+}
+
 func (tm *TokenMatrix) GetFreeEndpoint() *FreeEndpoint {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()

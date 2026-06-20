@@ -262,6 +262,15 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(antiAdblock.Stats())
 	})
 
+	mux.HandleFunc("/api/opro/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if oproOptimizer == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(oproOptimizer.Stats())
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p
