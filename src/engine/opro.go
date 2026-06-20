@@ -145,6 +145,13 @@ func (o *OPROMetaOptimizer) executeMetaOptimizationLoop() {
 	o.mu.Unlock()
 
 	o.applyBehavioralMutations(telemetryData.Failures)
+
+	// Voyageur: archive successful mutation as a permanent skill
+	if voyageurEngine != nil && optimizedPrompt != "" {
+		skillName := fmt.Sprintf("opro_evolution_v%d", o.promptVersion)
+		voyageurEngine.RegisterSuccessfulSkill(skillName, optimizedPrompt[:minInt(len(optimizedPrompt), 500)], "prompt_evolution")
+	}
+
 	o.save()
 
 	fmt.Printf("[OPRO] Master prompt mutated and optimized successfully (v%d)\n", o.promptVersion)

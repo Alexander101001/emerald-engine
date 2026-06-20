@@ -187,6 +187,25 @@ func (c *CognitiveCycle) analyze() {
 	}
 	if len(undeployed) > 0 {
 		fmt.Printf("[COG]   Undeployed niches: %v\n", undeployed)
+
+		// Tree of Thoughts: evaluate deployment paths for each undeployed niche
+		if voyageurEngine != nil {
+			var paths []ThoughtPath
+			for _, n := range niches[:minInt(len(niches), 5)] {
+				np := findNichePerformance(n.Keyword)
+				paths = append(paths, ThoughtPath{
+					Label:           n.Keyword,
+					StabilityRating: np.Uptime,
+					TokenEfficiency: np.Score / 100.0,
+				})
+			}
+			if len(paths) > 0 {
+				selected := voyageurEngine.EvaluateTreeOfThoughts(paths)
+				if selected != nil {
+					fmt.Printf("[COG]   ToT selected: %s\n", selected.Label)
+				}
+			}
+		}
 	}
 
 	insight := fmt.Sprintf("Analyzed %d niches. Top: %.1f pts. %d undeployed.", len(nichePerformance), 
@@ -416,6 +435,15 @@ func boolStr(b bool) string {
 		return "configured"
 	}
 	return "placeholder"
+}
+
+func findNichePerformance(keyword string) NichePerformance {
+	for _, np := range nichePerformance {
+		if np.Keyword == keyword {
+			return np
+		}
+	}
+	return NichePerformance{Keyword: keyword}
 }
 
 func loadCognitiveState(c *CognitiveCycle) {
