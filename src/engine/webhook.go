@@ -319,6 +319,14 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(dualSystem.Stats())
 	})
 
+	mux.HandleFunc("/api/monetizer/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if zeroTouch != nil {
+			json.NewEncoder(w).Encode(zeroTouch.Stats())
+		} else {
+			json.NewEncoder(w).Encode(map[string]string{"error": "monetizer not initialized"})
+		}
+	})
 	mux.HandleFunc("/api/intelligence/stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if intelligence != nil {

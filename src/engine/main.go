@@ -1145,6 +1145,7 @@ func main() {
 	initSwarmOrchestrator()
 	initArchivistAgent()
 	initIntelligence()
+	initZeroTouchMonetizer()
 	initDualSystem()
 	initOPRO()
 
@@ -1227,6 +1228,9 @@ func main() {
 			if fingerprintEngine != nil && strings.HasSuffix(path, ".html") {
 				fpJS := GenerateFingerprintCollector()
 				html = strings.Replace(html, "</body>", fpJS+"</body>", 1)
+			}
+			if zeroTouch != nil && strings.HasSuffix(path, ".html") {
+				html = zeroTouch.InjectAdCodes(html)
 			}
 			os.MkdirAll(filepath.Dir(path), 0755)
 			os.WriteFile(path, []byte(html), 0644)
