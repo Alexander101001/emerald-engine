@@ -98,6 +98,10 @@ func (rl *ReflexionLayer) RecordLearnedLesson(lesson string) {
 		rl.verbalMemory.LearnedLessons = rl.verbalMemory.LearnedLessons[len(rl.verbalMemory.LearnedLessons)-50:]
 	}
 	rl.saveVerbalMemory()
+
+	if archivistAgent != nil {
+		archivistAgent.ArchiveExperience("ReflexionAgent", "learned_lesson", lesson)
+	}
 }
 
 func (rl *ReflexionLayer) RunCriticExternalVerification(targetURL string) map[string]interface{} {

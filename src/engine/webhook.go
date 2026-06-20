@@ -319,6 +319,31 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(dualSystem.Stats())
 	})
 
+	mux.HandleFunc("/api/archivist/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if archivistAgent != nil {
+			json.NewEncoder(w).Encode(archivistAgent.Stats())
+		} else {
+			json.NewEncoder(w).Encode(map[string]string{"error": "archivist not initialized"})
+		}
+	})
+	mux.HandleFunc("/api/archivist/query", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if archivistAgent == nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": "archivist not initialized"})
+			return
+		}
+		problem := r.URL.Query().Get("q")
+		if problem == "" {
+			json.NewEncoder(w).Encode(map[string]string{"error": "missing query param q"})
+			return
+		}
+		results := archivistAgent.QueryPastWisdom(problem)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"query":   problem,
+			"results": results,
+		})
+	})
 	mux.HandleFunc("/api/swarm/stream", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if swarmOrchestrator == nil {

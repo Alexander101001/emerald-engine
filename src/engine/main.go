@@ -1143,6 +1143,7 @@ func main() {
 	initReflexionLayer()
 	initVoyageurEngine()
 	initSwarmOrchestrator()
+	initArchivistAgent()
 	initDualSystem()
 	initOPRO()
 

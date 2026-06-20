@@ -69,6 +69,12 @@ func (so *SwarmOrchestrator) LogEvent(agent, event, task string) {
 		so.memoryStream = so.memoryStream[len(so.memoryStream)-500:]
 	}
 	so.save()
+
+	// Dual persistence: archive to long-term SQLite-style memory stream
+	if archivistAgent != nil {
+		outcome := "logged"
+		archivistAgent.ArchiveExperience(agent, event, outcome)
+	}
 }
 
 func (so *SwarmOrchestrator) MultiAgentDiscussion(task, taskType string, params map[string]interface{}) bool {
