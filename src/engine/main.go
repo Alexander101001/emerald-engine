@@ -777,6 +777,36 @@ func gitCommitPush(files []string) error {
 	return nil
 }
 
+func setupGitCredentials() {
+	ghToken := vaultGet("GITHUB_TOKEN", "")
+	hfToken := vaultGet("HF_TOKEN", "")
+	ghUser := vaultGet("GITHUB_USER", "Alexander101001")
+	hfUser := vaultGet("HF_USER", "AlexanderGreater90")
+
+	os.MkdirAll("/root", 0755)
+	var netrcLines string
+
+	if ghToken != "" {
+		netrcLines += fmt.Sprintf("machine github.com\nlogin %s\npassword %s\n", ghUser, ghToken)
+		fmt.Printf("[GIT] GitHub credentials configured\n")
+	}
+
+	if hfToken != "" {
+		netrcLines += fmt.Sprintf("machine huggingface.co\nlogin %s\npassword %s\n", hfUser, hfToken)
+		fmt.Printf("[GIT] HF credentials configured\n")
+
+		hfURL := fmt.Sprintf("https://%s:%s@huggingface.co/spaces/%s/emerald-engine", hfUser, hfToken, hfUser)
+		exec.Command("git", "remote", "set-url", "origin", hfURL).Run()
+		exec.Command("git", "remote", "set-url", "huggingface", hfURL).Run()
+		exec.Command("git", "remote", "add", "github", fmt.Sprintf("https://%s:%s@github.com/%s/emerald-engine.git", ghUser, ghToken, ghUser)).Run()
+	}
+
+	if netrcLines != "" {
+		os.WriteFile("/root/.netrc", []byte(netrcLines), 0600)
+		exec.Command("chmod", "600", "/root/.netrc").Run()
+	}
+}
+
 // ─── Main ───
 
 func main() {
@@ -787,6 +817,7 @@ func main() {
 	db := loadFulfillmentDB("emerald_sales.json")
 	startWebhookServer(db)
 	initTradingPlatform()
+	setupGitCredentials()
 
 	fmt.Printf("[ENGINE] Emerald Engine v5.0 starting\n")
 	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d providers | Webhook: 8080\n", cycleDelay, len(llmProviders))
