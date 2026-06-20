@@ -465,6 +465,22 @@ func initSecurityAgent(memory *LongTermMemory, stm *ShortTermMemory, mcp *MCPReg
 
 func (sec *SecurityAuditor) approvalLoop() {
 	for req := range sec.approvalChan {
+		// Swarm multi-agent discussion before security audit
+		swarmApproved := true
+		if swarmOrchestrator != nil {
+			taskDesc := fmt.Sprintf("%s: %s", req.TaskType, req.TaskID)
+			swarmApproved = swarmOrchestrator.MultiAgentDiscussion(taskDesc, req.TaskType, req.Params)
+			swarmOrchestrator.LogEvent("SecurityOfficer", fmt.Sprintf("Auditing after swarm: %s", req.TaskType), taskDesc)
+		}
+
+		if !swarmApproved {
+			select {
+			case req.Response <- false:
+			default:
+			}
+			continue
+		}
+
 		approved := sec.auditTask(req)
 		select {
 		case req.Response <- approved:

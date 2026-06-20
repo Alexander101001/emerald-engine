@@ -301,6 +301,24 @@ func startWebhookServer(db *FulfillmentDB) {
 		})
 	})
 
+	mux.HandleFunc("/api/swarm/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if swarmOrchestrator == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(swarmOrchestrator.Stats())
+	})
+
+	mux.HandleFunc("/api/swarm/stream", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if swarmOrchestrator == nil {
+			json.NewEncoder(w).Encode([]interface{}{})
+			return
+		}
+		json.NewEncoder(w).Encode(swarmOrchestrator.GetRecentEvents(20))
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p

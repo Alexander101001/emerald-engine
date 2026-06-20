@@ -1139,6 +1139,7 @@ func main() {
 	initTemplateEngine()
 	initReflexionLayer()
 	initVoyageurEngine()
+	initSwarmOrchestrator()
 	initOPRO()
 
 	fmt.Printf("[ENGINE] Emerald Engine v6.0 — Autonomous Multi-Agent System\n")
