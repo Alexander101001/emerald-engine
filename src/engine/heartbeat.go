@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -24,22 +27,30 @@ type HeartbeatDaemon struct {
 	interval        time.Duration
 	jitterMax       int
 	httpClient      *http.Client
+	jar             *cookiejar.Jar
 	pings           int
 	failures        int
+	subClicks       int
 	rebuilds        int
 	running         bool
 	userAgents      []string
 	cognitiveQueries []string
 	externalPlatforms []struct{name, url string}
+	refererURL      string
+	fallbackToken   string
 }
 
 var heartbeatDaemon *HeartbeatDaemon
 
 func initHeartbeatDaemon() *HeartbeatDaemon {
+	jar, _ := cookiejar.New(nil)
 	hbd := &HeartbeatDaemon{
-		interval:  25 * time.Minute,
-		jitterMax: 300,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		interval:     25 * time.Minute,
+		jitterMax:    300,
+		httpClient:   &http.Client{Timeout: 10 * time.Second, Jar: jar},
+		jar:          jar,
+		refererURL:   "https://www.google.com/",
+		fallbackToken: "FALLBACK_FREE_CORE_INFERENCE",
 		userAgents: []string{
 			"Mozilla/5.0 (Linux; Android 10; SM-N970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -111,31 +122,38 @@ func (h *HeartbeatDaemon) pingAll() {
 }
 
 func (h *HeartbeatDaemon) pingTarget(name, url string) {
+	h.simulateHumanVisit(name, url)
+}
+
+func (h *HeartbeatDaemon) simulateHumanVisit(name, url string) {
 	start := time.Now()
 
-	req, _ := http.NewRequest("GET", url, nil)
-
-	var fp BrowserFingerprint
-	if fingerprintEngine != nil {
-		fp = fingerprintEngine.Random()
-		ApplyFingerprintHeaders(req, fp)
-	} else {
-		ua := h.userAgents[time.Now().UnixNano()%int64(len(h.userAgents))]
-		req.Header.Set("User-Agent", ua)
-		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	// Step 1: Primary page visit with full fingerprint
+	body, statusCode, _ := h.humanGet(url, false)
+	if body == "" {
+		h.recordFailure(name, url, start)
+		return
 	}
 
-	query := h.cognitiveQueries[time.Now().UnixNano()%int64(len(h.cognitiveQueries))]
-	req.Header.Set("X-Context-Query", query)
+	// Step 2: Simulate reading delay (5-25s)
+	readDelay := 5000 + time.Now().UnixNano()%20000
+	time.Sleep(time.Duration(readDelay) * time.Millisecond)
 
-	tok := tmGetToken("github")
-	if tok != "" {
-		req.Header.Set("Authorization", "Bearer "+tok[:8]+"...")
+	// Step 3: Extract links and click a random sub-link
+	links := extractLinks(body, url)
+	subClicked := false
+	if len(links) > 0 {
+		subURL := links[time.Now().UnixNano()%int64(len(links))]
+		subBody, subCode, _ := h.humanGet(subURL, true)
+		if subBody != "" && subCode == 200 {
+			subClicked = true
+			// Sub-page reading delay (3-10s)
+			subDelay := 3000 + time.Now().UnixNano()%7000
+			time.Sleep(time.Duration(subDelay) * time.Millisecond)
+		}
 	}
 
-	resp, err := h.httpClient.Do(req)
-	latency := time.Since(start).Milliseconds()
+	healthLatency := time.Since(start).Milliseconds()
 
 	isChild := true
 	var childStatus string
@@ -156,10 +174,10 @@ func (h *HeartbeatDaemon) pingTarget(name, url string) {
 		Name:     name,
 		URL:      url,
 		LastPing: time.Now(),
-		Latency:  latency,
+		Latency:  healthLatency,
 	}
 
-	if err != nil || (resp != nil && resp.StatusCode >= 500) {
+	if statusCode >= 500 || body == "" {
 		record.Status = "down"
 		record.FailCount = 1
 		h.failures++
@@ -185,6 +203,10 @@ func (h *HeartbeatDaemon) pingTarget(name, url string) {
 		}
 	}
 
+	if subClicked {
+		h.subClicks++
+	}
+
 	for i, r := range h.records {
 		if r.Name == name {
 			h.records[i] = record
@@ -193,6 +215,127 @@ func (h *HeartbeatDaemon) pingTarget(name, url string) {
 	}
 	h.records = append(h.records, record)
 	h.pings++
+
+	// Self-reflection logging (every 10th ping)
+	if h.pings%10 == 0 {
+		fmt.Printf("[REFLECT] Ping %d: %s | tokens: %d | clicks: %d\n",
+			h.pings, record.Status, len(tokenMatrix.slots), h.subClicks)
+	}
+}
+
+func (h *HeartbeatDaemon) humanGet(url string, isSub bool) (string, int, int64) {
+	req, _ := http.NewRequest("GET", url, nil)
+
+	if fingerprintEngine != nil {
+		fp := fingerprintEngine.Random()
+		ApplyFingerprintHeaders(req, fp)
+	} else {
+		ua := h.userAgents[time.Now().UnixNano()%int64(len(h.userAgents))]
+		req.Header.Set("User-Agent", ua)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	}
+
+	req.Header.Set("Referer", h.refererURL)
+	if isSub {
+		req.Header.Set("Referer", url)
+	}
+
+	query := h.cognitiveQueries[time.Now().UnixNano()%int64(len(h.cognitiveQueries))]
+	req.Header.Set("X-Context-Query", query)
+
+	tok := tmGetToken("github")
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok[:8]+"...")
+	} else {
+		req.Header.Set("Authorization", "Bearer "+h.fallbackToken)
+	}
+
+	start := time.Now()
+	resp, err := h.httpClient.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return "", 0, latency
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == 200 {
+		h.refererURL = url
+	}
+
+	return string(body), resp.StatusCode, latency
+}
+
+func extractLinks(body, baseURL string) []string {
+	var links []string
+	lower := strings.ToLower(body)
+	idx := 0
+	for {
+		startIdx := strings.Index(lower[idx:], `href="`)
+		if startIdx < 0 {
+			break
+		}
+		startIdx += idx + 6
+		endIdx := strings.IndexByte(lower[startIdx:], '"')
+		if endIdx < 0 {
+			break
+		}
+		href := body[startIdx : startIdx+endIdx]
+		idx = startIdx + endIdx
+
+		if !strings.HasPrefix(href, "http") {
+			continue
+		}
+		if strings.Contains(href, "google") || strings.Contains(href, "facebook") ||
+			strings.Contains(href, "twitter") || strings.Contains(href, "linkedin") {
+			continue
+		}
+
+		links = append(links, href)
+		if len(links) >= 10 {
+			break
+		}
+	}
+	return links
+}
+
+func (h *HeartbeatDaemon) recordFailure(name, url string, start time.Time) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	isChild := true
+	if orchestrator != nil {
+		orchestrator.mu.Lock()
+		if _, ok := orchestrator.Children[name]; !ok {
+			isChild = false
+		}
+		orchestrator.mu.Unlock()
+	}
+
+	latency := time.Since(start).Milliseconds()
+	record := HeartbeatRecord{
+		Name:     name,
+		URL:      url,
+		LastPing: time.Now(),
+		Latency:  latency,
+		Status:   "down",
+		FailCount: 1,
+	}
+	h.failures++
+
+	for i, r := range h.records {
+		if r.Name == name {
+			record.FailCount = r.FailCount + 1
+			h.records[i] = record
+			if record.FailCount >= 3 && isChild {
+				go h.triggerRebuild(name)
+			}
+			return
+		}
+	}
+	h.records = append(h.records, record)
 }
 
 func (h *HeartbeatDaemon) triggerRebuild(name string) {
@@ -332,13 +475,14 @@ func (h *HeartbeatDaemon) Stats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"pings":    h.pings,
-		"failures": h.failures,
-		"rebuilds": h.rebuilds,
-		"alive":    alive,
-		"down":     down,
-		"interval": h.interval.String(),
-		"running":  h.running,
+		"pings":     h.pings,
+		"failures":  h.failures,
+		"sub_clicks": h.subClicks,
+		"rebuilds":  h.rebuilds,
+		"alive":     alive,
+		"down":      down,
+		"interval":  h.interval.String(),
+		"running":   h.running,
 	}
 }
 
