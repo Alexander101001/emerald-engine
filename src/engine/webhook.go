@@ -310,6 +310,15 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(swarmOrchestrator.Stats())
 	})
 
+	mux.HandleFunc("/api/dualsystem/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if dualSystem == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(dualSystem.Stats())
+	})
+
 	mux.HandleFunc("/api/swarm/stream", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if swarmOrchestrator == nil {
