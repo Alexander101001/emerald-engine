@@ -229,6 +229,39 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(shield.Stats())
 	})
 
+	mux.HandleFunc("/api/reflect/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if selfReflect == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(selfReflect.Stats())
+	})
+
+	mux.HandleFunc("/api/templates/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if templateEngine == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		vcount := 0
+		if templateEngine != nil {
+			vcount = len(templateEngine.variants)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"variants": vcount,
+		})
+	})
+
+	mux.HandleFunc("/api/antiadblock/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if antiAdblock == nil {
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_initialized"})
+			return
+		}
+		json.NewEncoder(w).Encode(antiAdblock.Stats())
+	})
+
 	port := "8080"
 	if p := os.Getenv("WEBHOOK_PORT"); p != "" {
 		port = p

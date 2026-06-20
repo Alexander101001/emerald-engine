@@ -114,10 +114,18 @@ func (h *HeartbeatDaemon) pingTarget(name, url string) {
 	start := time.Now()
 
 	req, _ := http.NewRequest("GET", url, nil)
-	ua := h.userAgents[time.Now().UnixNano()%int64(len(h.userAgents))]
-	req.Header.Set("User-Agent", ua)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+
+	var fp BrowserFingerprint
+	if fingerprintEngine != nil {
+		fp = fingerprintEngine.Random()
+		ApplyFingerprintHeaders(req, fp)
+	} else {
+		ua := h.userAgents[time.Now().UnixNano()%int64(len(h.userAgents))]
+		req.Header.Set("User-Agent", ua)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	}
+
 	query := h.cognitiveQueries[time.Now().UnixNano()%int64(len(h.cognitiveQueries))]
 	req.Header.Set("X-Context-Query", query)
 

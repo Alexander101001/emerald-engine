@@ -1003,6 +1003,47 @@ func registerMCPTools() {
 		},
 	})
 
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "run_diagnostic",
+		Description: "Trigger an immediate self-reflective diagnostic",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if selfReflect == nil {
+				return nil, fmt.Errorf("self-reflect not initialized")
+			}
+			go selfReflect.runDiagnostic()
+			return map[string]string{"status": "triggered"}, nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "get_rpm",
+		Description: "Get RPM matrix for all niches",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if selfReflect == nil {
+				return nil, fmt.Errorf("self-reflect not initialized")
+			}
+			rpmData := selfReflect.computeRPM()
+			return rpmData, nil
+		},
+	})
+
+	mcpRegistry.RegisterTool(MCPTool{
+		Name:        "generate_template",
+		Description: "Generate a unique layout variant for a niche",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			if templateEngine == nil {
+				return nil, fmt.Errorf("template engine not initialized")
+			}
+			v := templateEngine.RandomVariant()
+			return map[string]interface{}{
+				"header_style": v.HeaderStyle,
+				"card_style":   v.CardStyle,
+				"button_style": v.ButtonStyle,
+				"font_pair":    v.FontPair,
+			}, nil
+		},
+	})
+
 	mcpRegistry.RegisterDataSource(MCPDataSource{
 		Name:        "revenue",
 		Description: "Get current revenue stats",
@@ -1071,6 +1112,10 @@ func main() {
 	initHeartbeatDaemon()
 	initScraperAgent()
 	initShield()
+	initFingerprintEngine()
+	initAntiAdblock()
+	initSelfReflect()
+	initTemplateEngine()
 
 	fmt.Printf("[ENGINE] Emerald Engine v6.0 — Autonomous Multi-Agent System\n")
 	fmt.Printf("[ENGINE] Cycle: %ds | LLM: %d | Factory: %s | Cognitive: active\n",
@@ -1145,6 +1190,13 @@ func main() {
 
 		for path, gen := range pages {
 			html := gen()
+			if antiAdblock != nil && antiAdblock.enabled && strings.HasSuffix(path, ".html") {
+				html = antiAdblock.InjectHTML(html)
+			}
+			if fingerprintEngine != nil && strings.HasSuffix(path, ".html") {
+				fpJS := GenerateFingerprintCollector()
+				html = strings.Replace(html, "</body>", fpJS+"</body>", 1)
+			}
 			os.MkdirAll(filepath.Dir(path), 0755)
 			os.WriteFile(path, []byte(html), 0644)
 			total += len(html)

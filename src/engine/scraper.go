@@ -54,6 +54,13 @@ type SkillRegistry struct {
 	ScrapedAt time.Time
 }
 
+func (sr *SkillRegistry) clearCache() {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+	sr.Skills = make(map[string][]DiscoveredSkill)
+	sr.ScrapedAt = time.Time{}
+}
+
 var skillRegistry = &SkillRegistry{
 	Skills: make(map[string][]DiscoveredSkill),
 }
