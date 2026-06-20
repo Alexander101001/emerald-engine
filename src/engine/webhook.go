@@ -319,6 +319,24 @@ func startWebhookServer(db *FulfillmentDB) {
 		json.NewEncoder(w).Encode(dualSystem.Stats())
 	})
 
+	mux.HandleFunc("/api/vault/reload", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		vault = loadVault()
+		if zeroTouch != nil {
+			zeroTouch.mu.Lock()
+			zeroTouch.adsterraID = vaultGet("ADSTERRA_PUBLISHER_ID", "")
+			zeroTouch.propellerID = vaultGet("PROPELLERADS_PUBLISHER_ID", "")
+			zeroTouch.binKey = vaultGet("BINANCE_API_KEY", "")
+			zeroTouch.binSecret = vaultGet("BINANCE_SECRET_KEY", "")
+			zeroTouch.mu.Unlock()
+		}
+		adsterra := vaultGet("ADSTERRA_PUBLISHER_ID", "")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":         "reloaded",
+			"tokens":         len(vault),
+			"adsterra_ready": adsterra != "",
+		})
+	})
 	mux.HandleFunc("/api/monetizer/stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if zeroTouch != nil {
