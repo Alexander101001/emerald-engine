@@ -1115,6 +1115,9 @@ func main() {
 	agentCoordinator.RegisterAgent("security", initSecurityAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
 	agentCoordinator.RegisterAgent("monetization", initMonetizationAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
 
+	agentCoordinator.RegisterAgent("GitHubAgent", initGitHubSwarmAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
+	agentCoordinator.RegisterAgent("HuggingFaceAgent", initHuggingFaceSwarmAgent(longTermMemory, shortTermMemory, mcpRegistry, ragPipeline))
+
 	// Scraper agent runs as standalone — registered by initScraperAgent()
 
 	initCFAgent()

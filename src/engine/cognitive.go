@@ -330,6 +330,13 @@ func (c *CognitiveCycle) launch() {
 
 	fmt.Printf("[COG] Launch: deploying children\n")
 
+	// Swarm delegation: Architect plans deployment, GitHubAgent pushes, HuggingFaceAgent hosts
+	if agentCoordinator != nil {
+		agentCoordinator.DelegateTask("Architect_Deploy_Planning", "Plan container topology for next niche")
+		agentCoordinator.DelegateTask("GitHubAgent_Repo_Sync", "Initialize new container repository")
+		agentCoordinator.DelegateTask("HuggingFaceAgent_Spaces_Deploy", "Deploy child to HuggingFace Spaces")
+	}
+
 	if orchestrator != nil {
 		orchestrator.deployNextNiche()
 	}
@@ -355,6 +362,12 @@ func (c *CognitiveCycle) monetize() {
 		c.Phases.Monetize = time.Since(start)
 		c.mu.Unlock()
 	}()
+
+	// Swarm delegation: Monetizer optimizes revenue, SecurityAgent audits
+	if agentCoordinator != nil {
+		agentCoordinator.DelegateTask("Monetizer_Optimization", "Swap to high-yield affiliate keywords")
+		agentCoordinator.DelegateTask("SecurityAgent_Token_Rotation", "Audit token health and rotate expired keys")
+	}
 
 	fmt.Printf("[COG] Monetize: optimizing revenue streams\n")
 

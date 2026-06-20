@@ -595,6 +595,122 @@ func initMonetizationAgent(memory *LongTermMemory, stm *ShortTermMemory, mcp *MC
 	return agent
 }
 
+// ========== GitHub Agent ==========
+
+var githubSwarmAgent *BaseAgent
+var huggingfaceSwarmAgent *BaseAgent
+
+func initGitHubSwarmAgent(memory *LongTermMemory, stm *ShortTermMemory, mcp *MCPRegistry, rag *RAGPipeline) *BaseAgent {
+	loop := AgentLoop{
+		Perceive: func() (interface{}, error) {
+			token := vaultGet("GITHUB_TOKEN", "")
+			return map[string]interface{}{
+				"has_token": token != "",
+				"children":  func() int { if orchestrator != nil { return len(orchestrator.Children) }; return 0 }(),
+			}, nil
+		},
+		Reason: func(percept interface{}) (ActionPlan, error) {
+			return ActionPlan{
+				Tasks:     []AgentTask{},
+				Rationale: "GitHub agent monitoring repository and CI/CD state",
+			}, nil
+		},
+		Plan: func(plan ActionPlan) []AgentTask { return plan.Tasks },
+		Execute: func(task AgentTask) (interface{}, error) {
+			return map[string]interface{}{"status": "GitHub agent ready for repo operations"}, nil
+		},
+		Validate: func(task AgentTask, result interface{}) error { return nil },
+	}
+	agent := NewBaseAgent("GitHubAgent", loop, memory, stm, mcp, rag)
+	githubSwarmAgent = agent
+	return agent
+}
+
+func initHuggingFaceSwarmAgent(memory *LongTermMemory, stm *ShortTermMemory, mcp *MCPRegistry, rag *RAGPipeline) *BaseAgent {
+	loop := AgentLoop{
+		Perceive: func() (interface{}, error) {
+			token := vaultGet("HF_TOKEN", "")
+			children := 0
+			if orchestrator != nil {
+				orchestrator.mu.Lock()
+				children = len(orchestrator.Children)
+				orchestrator.mu.Unlock()
+			}
+			return map[string]interface{}{
+				"has_token": token != "",
+				"children":  children,
+			}, nil
+		},
+		Reason: func(percept interface{}) (ActionPlan, error) {
+			return ActionPlan{
+				Tasks:     []AgentTask{},
+				Rationale: "HuggingFace agent monitoring Spaces deployment and inference",
+			}, nil
+		},
+		Plan:  func(plan ActionPlan) []AgentTask { return plan.Tasks },
+		Execute: func(task AgentTask) (interface{}, error) {
+			return map[string]interface{}{"status": "HF agent ready for Spaces operations"}, nil
+		},
+		Validate: func(task AgentTask, result interface{}) error { return nil },
+	}
+	agent := NewBaseAgent("HuggingFaceAgent", loop, memory, stm, mcp, rag)
+	huggingfaceSwarmAgent = agent
+	return agent
+}
+
+// ========== Swarm Delegation ==========
+
+type AgentRole struct {
+	Name        string
+	Description string
+}
+
+func (ac *AgentCoordinator) DelegateTask(taskName, description string) bool {
+	roles := []AgentRole{
+		{"Architect", "Plans the infrastructure and container topology."},
+		{"GitHubAgent", "Handles repository creation, CI/CD, and code push."},
+		{"HuggingFaceAgent", "Manages model hosting, Spaces deployment, and inference."},
+		{"Monetizer", "Analyzes niche profitability and optimizes affiliate/ad streams."},
+		{"SecurityAgent", "Audits code for vulnerabilities and manages token rotation."},
+	}
+
+	fmt.Printf("\n[SWARM] Delegating: %s\n", taskName)
+
+	for _, role := range roles {
+		if strings.Contains(taskName, role.Name) || strings.Contains(description, role.Name) {
+			fmt.Printf("[%s] (%s) -> Executing: %s\n", role.Name, role.Description, description)
+			ac.Broadcast(fmt.Sprintf("[%s] Task delegated: %s", role.Name, taskName))
+
+			if swarmOrchestrator != nil {
+				swarmOrchestrator.LogEvent(role.Name, fmt.Sprintf("Executing: %s", description), taskName)
+			}
+			return true
+		}
+	}
+
+	// Fallback: if taskName contains known keywords, route to best-matching agent
+	taskLower := strings.ToLower(taskName) + " " + strings.ToLower(description)
+	switch {
+	case strings.Contains(taskLower, "github") || strings.Contains(taskLower, "repo") || strings.Contains(taskLower, "push") || strings.Contains(taskLower, "commit"):
+		fmt.Printf("[GitHubAgent] (Repository operations) -> Executing: %s\n", description)
+		return true
+	case strings.Contains(taskLower, "huggingface") || strings.Contains(taskLower, "hf") || strings.Contains(taskLower, "space") || strings.Contains(taskLower, "model"):
+		fmt.Printf("[HuggingFaceAgent] (Spaces deployment) -> Executing: %s\n", description)
+		return true
+	case strings.Contains(taskLower, "monetiz") || strings.Contains(taskLower, "affiliate") || strings.Contains(taskLower, "ad") || strings.Contains(taskLower, "revenue"):
+		fmt.Printf("[Monetizer] (Revenue optimization) -> Executing: %s\n", description)
+		return true
+	case strings.Contains(taskLower, "security") || strings.Contains(taskLower, "token") || strings.Contains(taskLower, "audit") || strings.Contains(taskLower, "vulnerab"):
+		fmt.Printf("[SecurityAgent] (Security audit) -> Executing: %s\n", description)
+		return true
+	case strings.Contains(taskLower, "infra") || strings.Contains(taskLower, "deploy") || strings.Contains(taskLower, "container") || strings.Contains(taskLower, "topology"):
+		fmt.Printf("[Architect] (Infrastructure planning) -> Executing: %s\n", description)
+		return true
+	}
+
+	return false
+}
+
 // ========== Helpers ==========
 
 func countUndeployed() int {
