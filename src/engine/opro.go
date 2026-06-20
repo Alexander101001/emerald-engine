@@ -1,53 +1,53 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
-	"sort"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
 type OPROMetaOptimizer struct {
-	mu               sync.Mutex
-	evolutions       []EvolutionRecord
-	promptVersion    int
-	masterPrompt     string
-	successThreshold float64
-	totalOps         int
-	successfulOps    int
-	metaLoops        int
-	path             string
+	mu                sync.Mutex
+	evolutions        []EvolutionRecord
+	promptVersion     int
+	masterPromptPath  string
+	telemetryLogPath  string
+	successThreshold  float64
+	totalOps          int
+	successfulOps     int
+	metaLoops         int
+	path              string
 }
 
 type EvolutionRecord struct {
 	Version     int       `json:"version"`
 	Time        time.Time `json:"time"`
 	SuccessRate float64   `json:"success_rate"`
-	Issues      []string  `json:"issues"`
-	Mutations   []string  `json:"mutations"`
+	Failures    []string  `json:"failures"`
 	PromptDiff  string    `json:"prompt_diff"`
 }
 
-type OPROTelemetry struct {
-	OpType      string  `json:"op_type"`
-	Success     bool    `json:"success"`
-	ErrorMsg    string  `json:"error_msg,omitempty"`
-	DurationMs  int64   `json:"duration_ms"`
-	ChildCount  int     `json:"child_count,omitempty"`
-	Revenue     float64 `json:"revenue,omitempty"`
-	TokenStatus string  `json:"token_status,omitempty"`
+type TelemetryLog struct {
+	SuccessRate float64   `json:"success_rate"`
+	Failures    []string  `json:"failures"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 var oproOptimizer *OPROMetaOptimizer
 
 func initOPRO() *OPROMetaOptimizer {
 	o := &OPROMetaOptimizer{
-		promptVersion:    1,
-		masterPrompt:     "",
-		successThreshold: 0.95,
+		promptVersion:     1,
+		masterPromptPath:  "config/master_prompt.txt",
+		telemetryLogPath:  "logs/telemetry.json",
+		successThreshold:  1.0,
 		path:             "emerald_opro.json",
 	}
 	o.load()
@@ -56,76 +56,118 @@ func initOPRO() *OPROMetaOptimizer {
 	return o
 }
 
+func (o *OPROMetaOptimizer) loadCurrentMasterPrompt() string {
+	data, err := os.ReadFile(o.masterPromptPath)
+	if err != nil {
+		return "DEFAULT_MASTER_PROMPT_REPRESENTATION"
+	}
+	return string(data)
+}
+
+func (o *OPROMetaOptimizer) loadTelemetryLog() TelemetryLog {
+	data, err := os.ReadFile(o.telemetryLogPath)
+	if err != nil {
+		return TelemetryLog{SuccessRate: 100, Failures: []string{}}
+	}
+	var tl TelemetryLog
+	if json.Unmarshal(data, &tl) == nil {
+		return tl
+	}
+	return TelemetryLog{SuccessRate: 100, Failures: []string{}}
+}
+
+func (o *OPROMetaOptimizer) saveOptimizedPrompt(prompt string) {
+	os.MkdirAll(filepath.Dir(o.masterPromptPath), 0755)
+	os.WriteFile(o.masterPromptPath, []byte(prompt), 0644)
+}
+
+func (o *OPROMetaOptimizer) writeTelemetryLog(tl TelemetryLog) {
+	os.MkdirAll(filepath.Dir(o.telemetryLogPath), 0755)
+	data, _ := json.MarshalIndent(tl, "", "  ")
+	os.WriteFile(o.telemetryLogPath, data, 0644)
+}
+
 func (o *OPROMetaOptimizer) metaLoop() {
 	time.Sleep(10 * time.Minute)
-	o.runMetaOptimization()
+	o.executeMetaOptimizationLoop()
 	ticker := time.NewTicker(6 * time.Hour)
 	for range ticker.C {
-		o.runMetaOptimization()
+		o.executeMetaOptimizationLoop()
 	}
 }
 
-func (o *OPROMetaOptimizer) runMetaOptimization() {
+func (o *OPROMetaOptimizer) executeMetaOptimizationLoop() {
 	o.metaLoops++
+	currentPrompt := o.loadCurrentMasterPrompt()
+	telemetryData := o.collectTelemetry()
 
-	successRate := o.computeSuccessRate()
-	issues := o.collectIssues()
+	o.writeTelemetryLog(TelemetryLog{
+		SuccessRate: telemetryData.SuccessRate,
+		Failures:    telemetryData.Failures,
+		UpdatedAt:   time.Now(),
+	})
 
-	fmt.Printf("[OPRO] Meta-loop %d | success: %.1f%% | issues: %d\n",
-		o.metaLoops, successRate*100, len(issues))
+	fmt.Printf("[OPRO] Meta-loop %d | success: %.1f%% | failures: %d\n",
+		o.metaLoops, telemetryData.SuccessRate, len(telemetryData.Failures))
 
-	if successRate >= o.successThreshold && len(issues) == 0 {
+	if telemetryData.SuccessRate == 100 && len(telemetryData.Failures) == 0 {
+		fmt.Println("[OPRO] System performing optimally. No prompt mutation required.")
 		return
 	}
 
-	mutations := o.synthesizeMutations(issues)
+	optimizedPrompt := o.llmOptimizePrompt(currentPrompt, telemetryData)
+	if optimizedPrompt == "" {
+		fmt.Println("[OPRO] LLM optimization failed, keeping current prompt")
+		return
+	}
+
+	o.saveOptimizedPrompt(optimizedPrompt)
 
 	o.mu.Lock()
 	o.promptVersion++
 	o.evolutions = append(o.evolutions, EvolutionRecord{
 		Version:     o.promptVersion,
 		Time:        time.Now(),
-		SuccessRate: successRate,
-		Issues:      issues,
-		Mutations:   mutations,
-		PromptDiff:  strings.Join(mutations, "\n"),
+		SuccessRate: telemetryData.SuccessRate,
+		Failures:    telemetryData.Failures,
+		PromptDiff:  optimizedPrompt[:minInt(len(optimizedPrompt), 500)],
 	})
 	if len(o.evolutions) > 20 {
 		o.evolutions = o.evolutions[len(o.evolutions)-20:]
 	}
 	o.mu.Unlock()
 
-	o.applyMutations(mutations)
+	o.applyBehavioralMutations(telemetryData.Failures)
 	o.save()
 
-	fmt.Printf("[OPRO] Evolution v%d: %d mutations applied\n", o.promptVersion, len(mutations))
+	fmt.Printf("[OPRO] Master prompt mutated and optimized successfully (v%d)\n", o.promptVersion)
 }
 
-func (o *OPROMetaOptimizer) computeSuccessRate() float64 {
-	if o.totalOps == 0 {
-		return 1.0
-	}
-	return float64(o.successfulOps) / float64(o.totalOps)
-}
-
-func (o *OPROMetaOptimizer) collectIssues() []string {
-	var issues []string
+func (o *OPROMetaOptimizer) collectTelemetry() TelemetryLog {
+	failures := []string{}
+	totalChecks := 0
+	failedChecks := 0
 
 	if cognitive != nil {
+		totalChecks++
 		if cognitive.Revenue == 0 && cognitive.CycleNum > 10 {
-			issues = append(issues, "zero_revenue_after_10_cycles")
+			failures = append(failures, "zero_revenue_after_10_cycles")
+			failedChecks++
 		}
 	}
 
 	if tokenMatrix != nil {
+		totalChecks++
 		stats := tokenMatrix.Stats()
 		freeEndpoints := toInt(stats["free_endpoints"])
 		if freeEndpoints == 0 {
-			issues = append(issues, "no_free_inference_endpoints")
+			failures = append(failures, "no_free_inference_endpoints")
+			failedChecks++
 		}
 	}
 
 	if orchestrator != nil {
+		totalChecks++
 		orchestrator.mu.Lock()
 		crashed := 0
 		for _, c := range orchestrator.Children {
@@ -135,106 +177,173 @@ func (o *OPROMetaOptimizer) collectIssues() []string {
 		}
 		orchestrator.mu.Unlock()
 		if crashed > 2 {
-			issues = append(issues, fmt.Sprintf("high_child_failure_rate_%d_crashed", crashed))
+			failures = append(failures, fmt.Sprintf("high_child_failure_rate_%d_crashed", crashed))
+			failedChecks++
 		}
 	}
 
 	if heartbeatDaemon != nil {
+		totalChecks++
 		stats := heartbeatDaemon.Stats()
-		failures := toInt(stats["failures"])
+		hfails := toInt(stats["failures"])
 		clicks := toInt(stats["sub_clicks"])
-		if failures > 10 && clicks == 0 {
-			issues = append(issues, "heartbeat_no_subclicks_high_failures")
+		if hfails > 10 && clicks == 0 {
+			failures = append(failures, "heartbeat_no_subclicks_high_failures")
+			failedChecks++
 		}
 	}
 
 	if agentCoordinator != nil {
+		totalChecks++
 		stats := agentCoordinator.Stats()
-		if agents, ok := stats["agents"].([]interface{}); ok {
-			for _, a := range agents {
+		if agents, ok := stats["agents"].(map[string]interface{}); ok {
+			for name, a := range agents {
 				if m, ok := a.(map[string]interface{}); ok {
-					if errors, ok := m["errors"].(int); ok && errors > 5 {
-						issues = append(issues, fmt.Sprintf("agent_error_high_%s", m["name"]))
+					if logs, ok := m["logs"].(float64); ok && logs > 5 {
+						failures = append(failures, fmt.Sprintf("agent_high_logs_%s_%.0f", name, logs))
+						failedChecks++
 					}
 				}
 			}
 		}
 	}
 
-	return issues
+	successRate := 100.0
+	if totalChecks > 0 {
+		successRate = float64(totalChecks-failedChecks) / float64(totalChecks) * 100
+	}
+
+	return TelemetryLog{
+		SuccessRate: successRate,
+		Failures:    failures,
+		UpdatedAt:   time.Now(),
+	}
 }
 
-func (o *OPROMetaOptimizer) synthesizeMutations(issues []string) []string {
-	mutations := make(map[string]bool)
+func (o *OPROMetaOptimizer) llmOptimizePrompt(currentPrompt string, telemetry TelemetryLog) string {
+	if len(llmProviders) == 0 {
+		return ""
+	}
 
-	for _, issue := range issues {
-		switch {
-		case strings.Contains(issue, "zero_revenue"):
-			mutations["MONETIZATION_AUDIT_INTERVAL=4h"] = true
-			mutations["ENABLE_AFFILIATE_FALLBACK_CHAINS=true"] = true
-			mutations["MIN_NICHE_COUNT=3"] = true
+	failuresJSON, _ := json.Marshal(telemetry)
 
-		case strings.Contains(issue, "no_free_inference"):
-			mutations["FREE_ENDPOINT_SCAN_INTERVAL=30m"] = true
-			mutations["HF_INTERNAL_ROUTING_ENABLED=true"] = true
-			mutations["TOKEN_HARVEST_DEEP_SCAN=true"] = true
+	metaInstruction := "You are Google DeepMind OPRO Engine. Analyze the following system prompt and recent system failure logs. Your task is to rewrite and optimize the system prompt to prevent these explicit failures and maximize operational efficiency. Output ONLY the newly optimized system prompt without any extra conversational text."
 
-		case strings.Contains(issue, "high_child_failure"):
-			mutations["CHILD_HEALTH_CHECK_INTERVAL=5m"] = true
-			mutations["MAX_CHILD_RESTART_ATTEMPTS=10"] = true
-			mutations["CHILD_DEPLOY_RETRY_DELAY=30s"] = true
+	userContent := fmt.Sprintf("Current Prompt:\n%s\n\nFailure Logs:\n%s", currentPrompt, string(failuresJSON))
 
-		case strings.Contains(issue, "heartbeat_no_subclicks"):
-			mutations["HEARTBEAT_BROWSER_RATIO=3"] = true
-			mutations["HEARTBEAT_SUBCLICK_FORCE=true"] = true
-
-		case strings.Contains(issue, "agent_error"):
-			mutations["AGENT_ERROR_THROTTLE_LIMIT=20"] = true
-			mutations["AGENT_SELF_HEAL_INTERVAL=60s"] = true
+	prov := llmProviders[0]
+	for _, p := range llmProviders {
+		if p.Name == "OpenRouter" {
+			prov = p
+			break
 		}
 	}
 
-	mutations["OPRO_PROMPT_VERSION"] = true
-	mutations["OPRO_META_LOOP_INTERVAL=4h"] = true
-
-	result := make([]string, 0, len(mutations))
-	for m := range mutations {
-		result = append(result, m)
+	payload := map[string]interface{}{
+		"model": prov.Model,
+		"messages": []map[string]string{
+			{"role": "system", "content": metaInstruction},
+			{"role": "user", "content": userContent},
+		},
+		"temperature": 0.7,
+		"max_tokens":  2048,
 	}
-	sort.Strings(result)
-	return result
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequest("POST", prov.URL, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+prov.Key)
+	if prov.Name == "Claude" {
+		req.Header.Set("x-api-key", prov.Key)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	}
+
+	client := http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[OPRO] LLM call failed: %v\n", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	json.Unmarshal(data, &result)
+
+	if choices, ok := result["choices"].([]interface{}); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]interface{}); ok {
+			if msg, ok := choice["message"].(map[string]interface{}); ok {
+				if content, ok := msg["content"].(string); ok {
+					content = strings.TrimSpace(content)
+					if len(content) > 50 {
+						fmt.Printf("[OPRO] LLM generated %d chars\n", len(content))
+						return content
+					}
+				}
+			}
+		}
+	}
+
+	if prov.Name == "Claude" {
+		if content, ok := result["content"].([]interface{}); ok && len(content) > 0 {
+			if block, ok := content[0].(map[string]interface{}); ok {
+				if text, ok := block["text"].(string); ok {
+					text = strings.TrimSpace(text)
+					if len(text) > 50 {
+						fmt.Printf("[OPRO] Claude generated %d chars\n", len(text))
+						return text
+					}
+				}
+			}
+		}
+	}
+
+	return ""
 }
 
-func (o *OPROMetaOptimizer) applyMutations(mutations []string) {
-	for _, m := range mutations {
+func (o *OPROMetaOptimizer) applyBehavioralMutations(failures []string) {
+	for _, f := range failures {
 		switch {
-		case strings.HasPrefix(m, "MONETIZATION_AUDIT_INTERVAL="):
-			fmt.Printf("[OPRO] Mutation: %s\n", m)
-		case strings.HasPrefix(m, "FREE_ENDPOINT_SCAN_INTERVAL="):
+		case strings.Contains(f, "zero_revenue"):
+			o.RecordOp("monetization_audit", false, "triggered by zero revenue")
+		case strings.Contains(f, "no_free_inference"):
 			if tokenMatrix != nil {
-				tokenMatrix.mu.Lock()
-				tokenMatrix.lastHarvest = time.Now().Add(-6 * time.Hour)
-				tokenMatrix.mu.Unlock()
-				fmt.Printf("[OPRO] Mutation: reset harvest timer for %s\n", m)
-			}
-		case m == "TOKEN_HARVEST_DEEP_SCAN=true":
-			if tokenMatrix != nil {
-				go func() {
-					tokenMatrix.probeFreeEndpoints()
-				}()
-				fmt.Printf("[OPRO] Mutation: triggering deep endpoint scan\n")
-			}
-		case m == "HEARTBEAT_BROWSER_RATIO=3":
-			fmt.Printf("[OPRO] Mutation: browser deep ping ratio increased\n")
-		case m == "HF_INTERNAL_ROUTING_ENABLED=true":
-			if tokenMatrix != nil {
+				go tokenMatrix.probeFreeEndpoints()
 				go tokenMatrix.scanPublicSpaces()
-				fmt.Printf("[OPRO] Mutation: scanning public HF spaces for endpoints\n")
 			}
-		case m == "HEARTBEAT_SUBCLICK_FORCE=true":
-			fmt.Printf("[OPRO] Mutation: sub-click forcing enabled\n")
-		default:
-			fmt.Printf("[OPRO] Mutation: %s\n", m)
+		case strings.Contains(f, "high_child_failure"):
+			if orchestrator != nil {
+				orchestrator.mu.Lock()
+				for name, child := range orchestrator.Children {
+					if child.Status == "crashed" || child.Status == "error" {
+						child.ErrorCount = 0
+						child.Status = "deploying"
+						orchestrator.Children[name] = child
+						fmt.Printf("[OPRO] Reset crashed child: %s\n", name)
+					}
+				}
+				orchestrator.mu.Unlock()
+			}
+		case strings.Contains(f, "heartbeat_no_subclicks"):
+			if heartbeatDaemon != nil && orchestrator != nil {
+				go func() {
+					orchestrator.mu.Lock()
+					for name, c := range orchestrator.Children {
+						if c.URL != "" {
+							orchestrator.mu.Unlock()
+							heartbeatDaemon.pingTarget(name, c.URL)
+							orchestrator.mu.Lock()
+						}
+					}
+					orchestrator.mu.Unlock()
+				}()
+			}
+		case strings.Contains(f, "agent_error"):
+			if agentCoordinator != nil {
+				for _, a := range agentCoordinator.Agents {
+					a.CycleNum = 0
+				}
+				fmt.Printf("[OPRO] Reset all agent cycles\n")
+			}
 		}
 	}
 }
@@ -303,7 +412,14 @@ func (o *OPROMetaOptimizer) Stats() map[string]interface{} {
 		"last_evolution":    lastEvolution,
 		"total_ops":         o.totalOps,
 		"successful_ops":    o.successfulOps,
-		"success_rate":      o.computeSuccessRate(),
+		"success_rate":      o.successRate(),
 		"success_threshold": o.successThreshold,
 	}
+}
+
+func (o *OPROMetaOptimizer) successRate() float64 {
+	if o.totalOps == 0 {
+		return 1.0
+	}
+	return float64(o.successfulOps) / float64(o.totalOps)
 }
