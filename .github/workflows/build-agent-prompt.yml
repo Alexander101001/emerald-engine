@@ -1,0 +1,28 @@
+name: Build Agent Prompt
+on:
+  workflow_dispatch:
+    inputs:
+      agent_id:
+        description: 'Target Agent ID (e.g., agent_01 to agent_66)'
+        required: true
+        default: 'agent_01'
+      system_prompt:
+        description: 'Paste your AI generated English prompt here'
+        required: true
+jobs:
+  update_prompt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Save Prompt File
+        run: |
+          mkdir -p .aegis/prompts
+          echo "${{ github.event.inputs.system_prompt }}" > .aegis/prompts/${{ github.event.inputs.agent_id }}.txt
+      - name: Deploy and Commit Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "build: auto update prompt for ${{ github.event.inputs.agent_id }}"
+          git push
