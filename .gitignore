@@ -17,6 +17,16 @@ src/engine/emerald-engine
 emerald-engine
 engine
 
+# Build artifacts
+target/
+__pycache__/
+
+# Binaries
+*.bin
+backend_performance
+engine_scanner
+systems_agent_bin
+
 # Security artifacts
 *.encrypted
 .hacker_bot_report.json
