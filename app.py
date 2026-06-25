@@ -13,7 +13,7 @@ try:
 except ImportError:
     load_dataset = None
     HAS_DATASETS = False
-    logging.warning("datasets not installed — stream endpoint disabled")
+    logging.warning("datasets not installed -- stream endpoint disabled")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -34,6 +34,8 @@ async def handle_telemetry(request):
 
 
 async def handle_stream(request):
+    if not HAS_DATASETS or load_dataset is None:
+        return {"error": "stream endpoint disabled -- datasets not available", "items": [], "count": 0}
     items = []
     dataset = load_dataset("imdb", split="train", streaming=True)
     for index, record in enumerate(dataset):
@@ -47,6 +49,9 @@ async def handle_stream(request):
 
 async def process_data_stream():
     logging.info("Initiating ultra-lean data streaming pipeline...")
+    if not HAS_DATASETS or load_dataset is None:
+        logging.warning("datasets not available -- skipping stream pipeline")
+        return
     try:
         dataset = load_dataset("imdb", split="train", streaming=True)
         for index, record in enumerate(dataset):
@@ -106,7 +111,7 @@ async def run_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 7860)
     await site.start()
-    logging.info("HTTP server on :7860 — endpoints: /health, /api/telemetry, /api/stream")
+    logging.info("HTTP server on :7860 -- endpoints: /health, /api/telemetry, /api/stream")
 
 
 async def main():
@@ -128,6 +133,7 @@ async def main():
     from agent_dashboard_compiler import run_dashboard_loop
     from agent_chat_interpreter import run_chat_loop
     from agent_git_lifecycle import run_git_lifecycle_loop
+    from agent_harvester import run_harvester_loop
 
     await run_server()
 
@@ -154,6 +160,7 @@ async def main():
         run_dashboard_loop(telemetry=telemetry),
         run_chat_loop(telemetry=telemetry),
         run_git_lifecycle_loop(telemetry=telemetry),
+        run_harvester_loop(telemetry=telemetry),
     )
 
 
