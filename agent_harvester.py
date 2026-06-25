@@ -85,8 +85,8 @@ class RepoHarvesterAgent(ParadigmAgentBase):
             except Exception as e:
                 logging.warning(f"  Harvester error for {repo_name}: {e}")
 
-            if self.telemetry:
-                self.telemetry.record_stream_item()
+            if self._telemetry:
+                self._telemetry.record_stream_item()
 
         logging.info(f"Harvest cycle #{self._cycle} complete — {len(TARGET_REPOS)} repos processed")
 
