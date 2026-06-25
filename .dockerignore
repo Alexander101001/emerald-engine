@@ -1,4 +1,6 @@
 node_modules/
+.git/
+.gitignore
 *.log
 .env
 emerald.db
@@ -10,3 +12,7 @@ secure-tokens.json
 .tenants/
 dist/
 logs/
+Dockerfile
+docker-compose*.yml
+Caddyfile
+README.md

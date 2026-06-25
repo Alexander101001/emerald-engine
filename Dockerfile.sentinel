@@ -1,0 +1,19 @@
+FROM python:3.11-alpine AS sentinel
+WORKDIR /sentinel
+
+RUN apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
+    && pip install --no-cache-dir cryptography aiohttp \
+    && apk del .build-deps
+
+COPY crypto_vault.py .
+COPY security_sentinel.py .
+
+ENV PYTHONUNBUFFERED=1
+ENV SENTINEL_PORT=8443
+
+EXPOSE 8443
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8443/health')" || exit 1
+
+CMD ["python", "security_sentinel.py"]

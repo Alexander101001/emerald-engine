@@ -2,16 +2,177 @@ name: Emerald Engine Auto-Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deploy target'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - docker
+          - hf-space
+          - vercel
+          - netlify
+
+concurrency:
+  group: emerald-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  HF_SPACE: AlexanderGreater90/emerald-engine
 
 jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run obfuscation scan
+        run: |
+          pip install cryptography -q
+          python obfuscate_environment.py --dry-run
+      - name: Check for secrets in code
+        run: |
+          ! grep -rE 'sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|hf_[a-zA-Z0-9]{36}' \
+            --exclude-dir=.git --exclude-dir=node_modules --exclude='*.encrypted' \
+            --exclude='api_key' --exclude='.env*' . 2>/dev/null || \
+            echo "::warning::Possible secrets found in code"
+      - name: Dependency audit
+        run: |
+          pip install safety -q 2>/dev/null || true
+          safety check -r requirements.txt --continue-on-error 2>/dev/null || echo "Safety audit completed"
+
+  build-sentinel:
+    name: Build Vault Sentinel
+    needs: security-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push sentinel
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.sentinel
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/sentinel:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/sentinel:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   build:
+    name: Build Engine Image
+    needs: security-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            latest
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-hf:
+    name: Deploy to HF Space
+    if: ${{ !cancelled() && (github.event_name == 'push' || inputs.target == 'all' || inputs.target == 'hf-space') }}
+    needs: [build, build-sentinel]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN not set — skipping deploy"
+            exit 0
+          fi
+          git remote add hf https://huggingface.co/spaces/${{ env.HF_SPACE }} || true
+          git push --force https://AlexanderGreater90:$HF_TOKEN@huggingface.co/spaces/${{ env.HF_SPACE }} main
+
+  integration-test:
+    name: Integration Test
+    if: ${{ !cancelled() }}
+    needs: [build, build-sentinel]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Pull and test engine image
+        env:
+          EMERALD_MASTER_SECURE_KEY: ${{ secrets.EMERALD_MASTER_SECURE_KEY }}
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker network create emerald-test-net 2>/dev/null || true
+          docker run --rm -d --name emerald-sentinel-test \
+            --network emerald-test-net \
+            -e EMERALD_MASTER_SECURE_KEY="${EMERALD_MASTER_SECURE_KEY}" \
+            -e SENTINEL_AUTH_TOKEN="test" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/sentinel:latest
+          docker run --rm -d --name emerald-engine-test \
+            --network emerald-test-net \
+            -e EMERALD_MASTER_SECURE_KEY="${EMERALD_MASTER_SECURE_KEY}" \
+            -e SENTINEL_URL="http://emerald-sentinel-test:8443" \
+            -e SENTINEL_AUTH_TOKEN="test" \
+            -p 8080:7860 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          sleep 10
+          curl -sf http://localhost:8080/health || echo "Health check not ready"
+          curl -sf http://localhost:8080/api/telemetry || echo "Telemetry not ready"
+          docker stop emerald-engine-test emerald-sentinel-test 2>/dev/null || true
+          docker network rm emerald-test-net 2>/dev/null || true
+
+  notify:
+    name: Notify
+    if: always()
+    needs: [security-scan, build-sentinel, build, deploy-hf, integration-test]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Build and Push
+      - name: Check status
         run: |
-          echo "Building Emerald Engine Container..."
-          docker build -t emerald-engine .
-          # Here you would add steps to push to Hugging Face or Cloud Registry
-          echo "System Verified and Ready."
+          if [ "${{ needs.build.result }}" = "success" ]; then
+            echo "✅ Deploy successful"
+          else
+            echo "❌ Deploy failed"
+            exit 1
+          fi

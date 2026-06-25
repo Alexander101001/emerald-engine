@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://emerald-engine.com/sitemap.xml

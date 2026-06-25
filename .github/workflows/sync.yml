@@ -1,0 +1,24 @@
+name: Automated SaaS Mirror Pipeline
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  sync-to-huggingface:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Codebase Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Deploy & Push Mirror directly to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          EMERALD_MASTER_SECURE_KEY: ${{ secrets.EMERALD_MASTER_SECURE_KEY }}
+        run: |
+          git config --global user.email "saas-automation-bot@github.com"
+          git config --global user.name "SaaS Loop Automation"
+          git remote add hf https://github-actions:$HF_TOKEN@huggingface.co/spaces/AlexanderGreater90/emerald-engine || true
+          git push --force hf main

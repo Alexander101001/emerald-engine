@@ -16,3 +16,10 @@ secure-tokens.json
 src/engine/emerald-engine
 emerald-engine
 engine
+
+# Security artifacts
+*.encrypted
+.hacker_bot_report.json
+sentinel-backups/
+vault-backups/
+

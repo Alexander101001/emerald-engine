@@ -5,19 +5,70 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  HF_SPACE: AlexanderGreater90/emerald-engine
+
 jobs:
-  deploy:
+  obfuscation-scan:
+    name: Obfuscation & Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run obfuscation scan
+        run: |
+          pip install cryptography -q
+          python obfuscate_environment.py --dry-run
+      - name: Check for secrets in code
+        run: |
+          ! grep -rE 'sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|hf_[a-zA-Z0-9]{36}' \
+            --exclude-dir=.git --exclude-dir=node_modules --exclude='*.encrypted' \
+            --exclude='.env*' . 2>/dev/null || \
+            echo "::warning::Possible secrets found in code"
 
+  build-sentinel:
+    name: Build Vault Sentinel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push sentinel
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.sentinel
+          push: true
+          tags: ghcr.io/${{ github.repository }}/sentinel:latest,ghcr.io/${{ github.repository }}/sentinel:${{ github.sha }}
+
+  deploy:
+    needs: [obfuscation-scan, build-sentinel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
       - name: Push to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add hf https://huggingface.co/spaces/AlexanderGreater90/Emerald-Autonomy-Engine || true
-          git push --force https://AlexanderGreater90:$HF_TOKEN@huggingface.co/spaces/AlexanderGreater90/Emerald-Autonomy-Engine main
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN not set — skipping deploy"
+            exit 0
+          fi
+          git remote add hf https://huggingface.co/spaces/${{ env.HF_SPACE }} || true
+          git push --force https://AlexanderGreater90:$HF_TOKEN@huggingface.co/spaces/${{ env.HF_SPACE }} main

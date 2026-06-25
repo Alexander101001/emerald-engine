@@ -1,37 +1,103 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: emerald-ollama
-    volumes:
-      - ollama_data:/root/.ollama
+  emerald-vault-sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile.sentinel
+    image: emerald-vault-sentinel:latest
+    container_name: emerald-vault-sentinel
+    restart: always
+    networks:
+      - emerald-internal
     ports:
-      - "11434:11434"
-    restart: unless-stopped
+      - "8443:8443"
+    environment:
+      - EMERALD_MASTER_SECURE_KEY=${EMERALD_MASTER_SECURE_KEY:?err}
+      - SENTINEL_AUTH_TOKEN=${SENTINEL_AUTH_TOKEN:-}
+      - SENTINEL_PORT=8443
+      - ENCRYPTED_CONFIG_PATH=/etc/sentinel/config.encrypted
+      - VAULT_BACKUP_PATH=/var/lib/sentinel/backup
+    volumes:
+      - sentinel-data:/var/lib/sentinel
+      - sentinel-config:/etc/sentinel
+      - encrypted-data:/data/encrypted:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.20"
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8443/health')"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  emerald-brain:
-    build: .
-    container_name: emerald-brain
-    env_file:
-      - .env
-    environment:
-      - OLLAMA_ENDPOINT=http://ollama:11434
-      - PORT=3000
-    ports:
-      - "3000:3000"
+  emerald-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: emerald-engine:latest
+    container_name: emerald-engine
+    restart: always
     depends_on:
-      ollama:
+      emerald-vault-sentinel:
         condition: service_healthy
-    restart: unless-stopped
+    networks:
+      - emerald-internal
+    ports:
+      - "7860:7860"
+    environment:
+      - EMERALD_MASTER_SECURE_KEY=${EMERALD_MASTER_SECURE_KEY:?err}
+      - SENTINEL_URL=http://emerald-vault-sentinel:8443
+      - SENTINEL_AUTH_TOKEN=${SENTINEL_AUTH_TOKEN:-}
+      - PYTHONUNBUFFERED=1
+      - OLLAMA_ENDPOINT=${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      - HF_SPACE_URL=https://alexandergreater90-emerald-engine.hf.space
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_USER_ID=${TELEGRAM_USER_ID:-}
+      - GITHUB_REMOTE=${GITHUB_REMOTE:-origin}
+      - HACKER_BOT_INTERVAL=${HACKER_BOT_INTERVAL:-3600}
     volumes:
-      - ./logs:/app/logs
-      - /var/run/docker.sock:/var/run/docker.sock
+      - encrypted-data:/data/encrypted:ro
+      - engine-data:/var/lib/emerald
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.50"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  emerald-internal:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
 
 volumes:
-  ollama_data:
+  sentinel-data:
+    driver: local
+  sentinel-config:
+    driver: local
+  encrypted-data:
+    driver: local
+  engine-data:
+    driver: local

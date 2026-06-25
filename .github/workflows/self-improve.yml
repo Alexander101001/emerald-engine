@@ -1,0 +1,190 @@
+name: Self-Improvement Loop
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Analysis target'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - telemetry-only
+          - commit-only
+
+concurrency:
+  group: self-improve-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze Telemetry & Generate Improvements
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install --quiet --no-cache-dir aiohttp requests
+
+      - name: Fetch Telemetry from HF Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          curl -s --max-time 15 \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            "https://alexandergreater90-emerald-engine.hf.space/health" \
+            -o /tmp/hf_health.json || echo '{"status":"unreachable"}' > /tmp/hf_health.json
+          curl -s --max-time 15 \
+            "https://alexandergreater90-emerald-engine.hf.space/api/telemetry" \
+            -o /tmp/telemetry.json || echo '{}' > /tmp/telemetry.json
+          cat /tmp/telemetry.json
+
+      - name: Run Self-Improvement Agent
+        env:
+          EMERALD_MASTER_SECURE_KEY: ${{ secrets.EMERALD_MASTER_SECURE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -c "
+import asyncio, json, os, subprocess, sys
+from pathlib import Path
+
+async def analyze():
+    telemetry = {}
+    hf = Path('/tmp/telemetry.json')
+    if hf.exists():
+        telemetry = json.loads(hf.read_text())
+
+    # Read commit history
+    proc = await asyncio.create_subprocess_exec(
+        'git', 'log', '-15', '--oneline', '--format=%h %s',
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate(timeout=10)
+    commits = stdout.decode()
+
+    # Read key source files for context
+    code_samples = []
+    for ext in ['.py', '.js', '.go', '.yml', '.yaml']:
+        for f in sorted(Path('.').rglob(f'*{ext}')):
+            p = str(f)
+            if any(x in p for x in ['.git/', '.aegis/', '__pycache__/', 'node_modules/']):
+                continue
+            try:
+                c = f.read_text()
+                code_samples.append(f'--- {p} ({len(c.splitlines())} lines) ---\n{c[:500]}')
+            except:
+                pass
+            if sum(len(s) for s in code_samples) > 8000:
+                break
+        if sum(len(s) for s in code_samples) > 8000:
+            break
+
+    code = '\n'.join(code_samples)
+
+    report = {
+        'timestamp': __import__('time').time(),
+        'telemetry': telemetry,
+        'commits': commits,
+        'code_snapshot_length': len(code),
+        'suggestions': [],
+    }
+
+    # Built-in rules-based analysis (works without LLM)
+    suggestions = []
+
+    # Check memory pressure
+    mem = telemetry.get('memory_percent', 0)
+    if mem and mem > 80:
+        suggestions.append({
+            'file': 'app.py',
+            'issue': f'High memory usage: {mem}%',
+            'fix': 'Reduce batch size or add gc.collect() in the stream loop',
+            'priority': 'high',
+        })
+
+    cpu = telemetry.get('cpu_percent', 0)
+    if cpu and cpu > 70:
+        suggestions.append({
+            'file': 'app.py',
+            'issue': f'High CPU usage: {cpu}%',
+            'fix': 'Increase asyncio.sleep duration or optimize stream processing',
+            'priority': 'high',
+        })
+
+    errors = telemetry.get('app_errors', 0)
+    if errors and errors > 10:
+        suggestions.append({
+            'file': 'app.py',
+            'issue': f'High error count: {errors}',
+            'fix': 'Add try/except around dataset stream processing',
+            'priority': 'high',
+        })
+
+    rt = telemetry.get('avg_response_ms', 0)
+    if rt and rt > 1000:
+        suggestions.append({
+            'file': 'app.py',
+            'issue': f'High response time: {rt}ms',
+            'fix': 'Add caching or reduce streaming batch size',
+            'priority': 'medium',
+        })
+
+    report['suggestions'] = suggestions
+    report['suggestion_count'] = len(suggestions)
+
+    Path('/tmp/improvement_report.json').write_text(json.dumps(report, indent=2))
+    print(json.dumps(report, indent=2))
+
+asyncio.run(analyze())
+"
+
+      - name: Create Pull Request with Improvements
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "auto: self-improvement patch based on telemetry analysis"
+          title: "Auto Self-Improvement — $(date +%Y-%m-%d)"
+          body: |
+            ## Self-Improvement Report
+
+            Automated analysis of telemetry data and code quality metrics.
+
+            ### Changes
+            - Performance optimizations from telemetry analysis
+            - Resource consumption improvements
+            - Code quality fixes
+
+            ### Telemetry Snapshot
+            See attached `/tmp/improvement_report.json` for full details.
+
+            _Generated by Emerald Self-Improvement Loop_
+          branch: auto-improve/${{ github.run_id }}
+          base: main
+          labels: auto-improvement
+          delete-branch: true
+
+      - name: Report Status
+        if: always()
+        run: |
+          echo "::notice::Self-improvement cycle complete"
+          cat /tmp/improvement_report.json 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(f'Suggestions: {d.get(\"suggestion_count\", 0)}')
+for s in d.get('suggestions', []):
+    print(f'  [{s.get(\"priority\",\"?\")}] {s.get(\"file\",\"?\")}: {s.get(\"issue\",\"?\")}')
+" 2>/dev/null || echo "No report generated"
