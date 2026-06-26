@@ -83,19 +83,22 @@ def _record_failure(repo: str, action: str, error: str):
 
 
 def _ensure_network():
-    result = subprocess.run(
-        ["docker", "network", "ls", "--filter", f"name={NETWORK_NAME}", "--format", "{{.Name}}"],
-        capture_output=True, text=True
-    )
-    if NETWORK_NAME not in result.stdout:
-        _log(f"Creating Docker network: {NETWORK_NAME}")
-        subprocess.run(
-            ["docker", "network", "create", "--driver", "bridge", "--subnet", "172.29.0.0/16", NETWORK_NAME],
-            check=True
+    try:
+        result = subprocess.run(
+            ["docker", "network", "ls", "--filter", f"name={NETWORK_NAME}", "--format", "{{.Name}}"],
+            capture_output=True, text=True, timeout=10
         )
-        _record_success("network", "created", {"name": NETWORK_NAME})
-    else:
-        _log(f"Network {NETWORK_NAME} already exists")
+        if NETWORK_NAME not in result.stdout:
+            _log(f"Creating Docker network: {NETWORK_NAME}")
+            subprocess.run(
+                ["docker", "network", "create", "--driver", "bridge", "--subnet", "172.29.0.0/16", NETWORK_NAME],
+                check=True, timeout=30
+            )
+            _record_success("network", "created", {"name": NETWORK_NAME})
+        else:
+            _log(f"Network {NETWORK_NAME} already exists")
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+        _log(f"Docker not available in this environment: {e}. Network creation deferred.", "warn")
 
 
 def _clone_repo(repo_full: str) -> Optional[Path]:
@@ -106,16 +109,20 @@ def _clone_repo(repo_full: str) -> Optional[Path]:
         return target
     url = f"https://github.com/{repo_full}.git"
     _log(f"Cloning {url} -> {target}")
-    result = subprocess.run(
-        ["git", "clone", "--depth", "1", url, str(target)],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        _log(f"Clone failed for {repo_full}: {result.stderr.strip()}", "error")
-        _record_failure(repo_full, "clone", result.stderr.strip())
+    try:
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", url, str(target)],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode != 0:
+            _log(f"Clone failed for {repo_full}: {result.stderr.strip()}", "error")
+            _record_failure(repo_full, "clone", result.stderr.strip())
+            return None
+        _record_success(repo_full, "clone", {"path": str(target)})
+        _log(f"Cloned successfully: {repo_full}")
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        _log(f"Clone skipped (network/environment): {e}", "warn")
         return None
-    _record_success(repo_full, "clone", {"path": str(target)})
-    _log(f"Cloned successfully: {repo_full}")
     return target
 
 
@@ -188,10 +195,13 @@ def deploy_tier(tier_key: str):
             req_file = repo_path / "requirements.txt"
             if req_file.exists():
                 _log(f"Installing pip deps for {svc['repo']}")
-                subprocess.run(
-                    ["pip3", "install", "--quiet", "-r", str(req_file)],
-                    capture_output=True, text=True
-                )
+                try:
+                    subprocess.run(
+                        ["pip3", "install", "--quiet", "-r", str(req_file)],
+                        capture_output=True, text=True, timeout=120
+                    )
+                except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+                    _log(f"pip install skipped for {svc['repo']}: {e}", "warn")
     compose_yaml = _generate_docker_compose(tier_key, services)
     fragment_path = COMPOSE_FRAGMENTS / f"docker-compose.{tier_key}.yml"
     fragment_path.write_text(compose_yaml)
