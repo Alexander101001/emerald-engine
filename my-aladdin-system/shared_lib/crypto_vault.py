@@ -1,0 +1,1 @@
+/tmp/opencode/emerald-engine/crypto_vault.py

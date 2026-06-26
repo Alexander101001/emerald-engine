@@ -1,0 +1,1 @@
+/tmp/opencode/emerald-engine/telemetry.py
