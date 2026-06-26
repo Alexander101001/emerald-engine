@@ -1,0 +1,11 @@
+{
+        "name": "OpenHands Workspace",
+            "image": "ghcr.io/all-in-ai/openhands:latest",
+                "forwardPorts": [3000],
+                    "features": {
+                            "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+                                },
+                                    "overrideCommand": false
+                                    }
+                                    
+}
