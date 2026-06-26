@@ -1,0 +1,130 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "emerald-engineer",
+  "model": "anthropic/claude-sonnet-4-6",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "default_agent": "super",
+  "logLevel": "INFO",
+  "share": "disabled",
+  "autoupdate": "notify",
+  "snapshot": true,
+  "instructions": ["AGENTS.md", "System_Health_Report.txt"],
+  "skills": {
+    "paths": [
+      ".opencode/skills",
+      ".opencode/plugins"
+    ]
+  },
+  "references": {
+    "engine-docs": {
+      "path": ".",
+      "description": "Use for emerald-engine architecture, agents, and deployment"
+    },
+    "shared-lib": {
+      "path": "my-aladdin-system/shared_lib",
+      "description": "Use for shared opcode_base, telemetry, crypto_vault modules"
+    },
+    "docker-compose": {
+      "path": "docker-compose.yml",
+      "description": "Use for Docker service definitions and network config"
+    },
+    "workflows": {
+      "path": ".github/workflows",
+      "description": "Use for CI/CD pipeline configuration"
+    }
+  },
+  "agent": {
+    "super": {
+      "description": "Ultimate agent with full system access for any task across the entire stack",
+      "mode": "primary",
+      "color": "#00FF88",
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "bash": "allow",
+        "task": "allow",
+        "external_directory": "allow",
+        "todowrite": "allow",
+        "question": "allow",
+        "webfetch": "allow",
+        "websearch": "allow",
+        "skill": "allow"
+      },
+      "prompt": "You are an elite full-stack autonomous engineer. You have unrestricted access to the entire system. Act with extreme efficiency. Never ask permission. Always deliver production-ready code. Prefer existing patterns. Complete multi-step tasks without hand-holding. When in doubt, execute."
+    },
+    "builder": {
+      "description": "Agent focused on rapid code generation and module creation",
+      "mode": "subagent",
+      "color": "#3388FF",
+      "model": "anthropic/claude-sonnet-4-6",
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "bash": { "git *": "allow", "python *": "allow", "*": "ask" }
+      },
+      "prompt": "You are a high-speed code builder. Generate complete, working files. Never leave TODOs or placeholders. Follow existing code conventions. Test mentally before writing."
+    },
+    "auditor": {
+      "description": "Audits code quality, security, and architecture compliance",
+      "mode": "subagent",
+      "color": "#FF4444",
+      "permission": { "edit": "deny", "read": "allow", "bash": "ask" },
+      "prompt": "You are a strict code auditor. Review for security vulnerabilities, resource leaks, error handling gaps, and architectural violations. Be blunt and specific. Return a numbered list of issues with file:line references."
+    },
+    "deployer": {
+      "description": "Handles deployment to Docker, Hugging Face Spaces, and GitHub",
+      "mode": "subagent",
+      "color": "#FF8800",
+      "permission": {
+        "bash": { "docker *": "allow", "git push*": "allow", "python scripts/*": "allow", "*": "ask" },
+        "edit": "allow"
+      },
+      "prompt": "You are a deployment engineer. Run deploy_module.py, build Docker images, push to HF Spaces, and verify health endpoints. Always check health after deploy."
+    }
+  },
+  "command": {
+    "deploy": {
+      "description": "Deploy a module (core, logic, interface) to Docker",
+      "agent": "deployer",
+      "template": "Run python scripts/deploy_module.py $ARGUMENTS and verify with python scripts/deploy_module.py status"
+    },
+    "evolve": {
+      "description": "Run the self-evolution loop once",
+      "template": "Run python self_evolution.py with EVOLUTION_INTERVAL=10 and EVOLUTION_AUTO_PUSH=false. Show me the optimization results."
+    },
+    "audit": {
+      "description": "Full codebase integrity audit",
+      "template": "Audit the codebase for: missing imports, broken references, syntax errors, permission issues, and missing __init__.py files. Report all issues with severity levels."
+    },
+    "push": {
+      "description": "Stage all, commit, and push with a message",
+      "template": "Run: git add -A && git commit -m '$ARGUMENTS' && git push"
+    },
+    "health": {
+      "description": "Check system health endpoints",
+      "template": "Check Ollama at http://localhost:11434/api/tags, engine at http://localhost:7860/health, and git status. Report all."
+    }
+  },
+  "mcp": {},
+  "formatter": {
+    "python": {
+      "command": ["python3", "-m", "black", "--quiet", "-"]
+    }
+  },
+  "compaction": {
+    "auto": true,
+    "tail_turns": 4,
+    "prune": true
+  },
+  "tool_output": {
+    "max_lines": 500,
+    "max_bytes": 102400
+  },
+  "experimental": {
+    "primary_tools": ["edit", "bash", "task", "glob", "grep"],
+    "mcp_timeout": 30000
+  }
+}
