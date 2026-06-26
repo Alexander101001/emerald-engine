@@ -1,14 +1,34 @@
-FROM python:3.11-slim AS builder
-WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+FROM python:3.13-slim-bookworm AS base
 
-FROM python:3.11-slim AS runner
 WORKDIR /app
-COPY --from=builder /root/.local /root/.local
+
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    curl \
+    supervisor \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir supervisor
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . .
-ENV PATH=/root/.local/bin:$PATH
+
+RUN chmod +x scripts/*.sh 2>/dev/null || true
+
 ENV PYTHONUNBUFFERED=1
+ENV OLLAMA_HOST=http://localhost:11434
+ENV HF_HOME=/data/huggingface
+ENV QDRANT_PATH=/data/qdrant
+ENV STREAM_OUTPUT_DIR=/data/research_stream
+ENV EVOLUTION_INTERVAL=300
+ENV EVOLUTION_AUTO_PUSH=false
+
+RUN mkdir -p /data/huggingface /data/qdrant /data/research_stream /data/logs
+
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
 EXPOSE 7860
-CMD ["python", "app.py"]
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

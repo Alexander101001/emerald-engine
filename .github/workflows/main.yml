@@ -108,7 +108,7 @@ except Exception as e:
           echo "Branch: ${{ github.ref_name }}" >> System_Health_Report.txt
           echo "" >> System_Health_Report.txt
           echo "-- Integrity Check --" >> System_Health_Report.txt
-          PY_COUNT=$(find . -name '*.py' -not -path './.git/*' -not -path './harvested_repos/*' | wc -l)
+          PY_COUNT=$(find . -name '*.py' -not -path './.git/*' -not -path './harvested_repos/*' -not -path './external_tools/*' | wc -l)
           echo "Python files: $PY_COUNT" >> System_Health_Report.txt
           SH_COUNT=$(find . -name '*.sh' -not -path './.git/*' -not -path './harvested_repos/*' | wc -l)
           echo "Shell scripts: $SH_COUNT" >> System_Health_Report.txt
@@ -130,3 +130,10 @@ except Exception as e:
         run: |
           git fsck --no-dangling 2>&1 || true
           echo "Repository integrity check complete"
+
+  deploy-hf:
+    name: Deploy to Hugging Face
+    needs: [lint-and-validate]
+    if: ${{ github.ref_name == 'main' }}
+    uses: ./.github/workflows/deploy_to_hf.yml
+    secrets: inherit
