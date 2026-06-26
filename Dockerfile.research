@@ -1,0 +1,16 @@
+FROM python:3.13-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-research.txt .
+RUN pip install --no-cache-dir -r requirements-research.txt
+
+COPY infinite_research_stream.py .
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "infinite_research_stream.py"]

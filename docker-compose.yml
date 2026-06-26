@@ -84,6 +84,62 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  emerald-research-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile.research
+    image: emerald-research-stream:latest
+    container_name: emerald-research-stream
+    restart: always
+    depends_on:
+      - emerald-engine
+    networks:
+      - emerald-internal
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=research_vectors
+      - STREAM_WORKERS=4
+      - ARXIV_QUERY=cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL
+      - ANTHROPIC_FEED=https://www.anthropic.com/research
+      - OPENAI_BLOG=https://openai.com/index/
+      - STREAM_OUTPUT_DIR=/data/research
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - research-data:/data/research
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.30"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: emerald-qdrant
+    restart: always
+    networks:
+      - emerald-internal
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
 networks:
   emerald-internal:
     driver: bridge
@@ -100,4 +156,8 @@ volumes:
   encrypted-data:
     driver: local
   engine-data:
+    driver: local
+  qdrant-data:
+    driver: local
+  research-data:
     driver: local
