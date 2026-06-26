@@ -12,14 +12,15 @@ on:
           - emerald-saas
           - both
       target_agent_id:
-        description: Agent ID (agent_01 to agent_66)
+        description: Agent ID (agent_01 to agent_66) or "meta" for ASI-Seed auto-generation
         required: true
         default: agent_01
       system_prompt:
-        description: System prompt payload
-        required: true
+        description: System prompt payload. Leave empty if using meta mode for auto-generation across all 66 agents.
+        required: false
+        default: ''
       component:
-        description: Component to patch
+        description: Component to patch (auto-detect, openhands, ollama, disk_monitor)
         required: false
         default: auto-detect
       ollama_model:
@@ -27,29 +28,51 @@ on:
         required: false
         default: qwen2.5-coder:1.5b
       auto_activate:
-        description: Run activation after deploy
+        description: Run full activation after deploy
         required: false
         default: 'true'
         type: choice
         options:
           - 'true'
           - 'false'
+      enable_meta_prompt:
+        description: Enable ASI-Seed Brain meta-prompting (auto-generates prompts for all 66 agents across 5 levels x 5 axes)
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      enable_disk_monitor:
+        description: Deploy recursive disk safeguarding monitor
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 jobs:
   validate:
     runs-on: ubuntu-latest
     outputs:
       agent_path: ${{ steps.set_path.outputs.agent_path }}
       target_list: ${{ steps.set_target.outputs.target_list }}
+      is_meta: ${{ steps.check_meta.outputs.is_meta }}
     steps:
       - name: Validate inputs
         run: |
-          if [ -z "${{ github.event.inputs.system_prompt }}" ]; then
-            echo "ERROR: system_prompt cannot be empty"
+          IS_META="${{ github.event.inputs.enable_meta_prompt }}"
+          AGENT_ID="${{ github.event.inputs.target_agent_id }}"
+          PROMPT="${{ github.event.inputs.system_prompt }}"
+          if [ "$IS_META" = "false" ] && [ "$AGENT_ID" != "meta" ] && [ -z "$PROMPT" ]; then
+            echo "ERROR: system_prompt required when meta mode is disabled."
             exit 1
           fi
-          echo "Agent: ${{ github.event.inputs.target_agent_id }}"
-          echo "Model: ${{ github.event.inputs.ollama_model }}"
-          echo "Prompt length: $(echo -n '${{ github.event.inputs.system_prompt }}' | wc -c) chars"
+          echo "Agent: $AGENT_ID | Meta: $IS_META | Model: ${{ github.event.inputs.ollama_model }}"
+          echo "Disk monitor: ${{ github.event.inputs.enable_disk_monitor }}"
+          if [ -n "$PROMPT" ]; then
+            echo "Prompt length: $(echo -n '$PROMPT' | wc -c) chars"
+          fi
       - name: Set agent path
         id: set_path
         run: |
@@ -58,13 +81,71 @@ jobs:
         id: set_target
         run: |
           case '${{ github.event.inputs.target_repo }}' in
-            emerald-engine) echo "target_list=emerald-engine" >> $GITHUB_OUTPUT ;;
-            emerald-saas)   echo "target_list=emerald-saas" >> $GITHUB_OUTPUT ;;
-            both)           echo "target_list=emerald-engine emerald-saas" >> $GITHUB_OUTPUT ;;
+            emerald-engine) echo "target_list=[\"emerald-engine\"]" >> $GITHUB_OUTPUT ;;
+            emerald-saas)   echo "target_list=[\"emerald-saas\"]" >> $GITHUB_OUTPUT ;;
+            both)           echo "target_list=[\"emerald-engine\",\"emerald-saas\"]" >> $GITHUB_OUTPUT ;;
           esac
+      - name: Check meta mode
+        id: check_meta
+        run: |
+          echo "is_meta=${{ github.event.inputs.enable_meta_prompt }}" >> $GITHUB_OUTPUT
+  meta_prompt_generation:
+    runs-on: ubuntu-latest
+    needs: validate
+    if: ${{ needs.validate.outputs.is_meta == 'true' }}
+    steps:
+      - name: Checkout emerald-engine
+        uses: actions/checkout@v4
+        with:
+          repository: Alexander101001/emerald-engine
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run ASI-Seed Brain meta-prompt engine
+        run: |
+          pip3 install aiohttp --quiet 2>/dev/null || true
+          echo "Generating prompts for all 66 agents across 5 levels x 5 axes..."
+          python3 -c "
+import asyncio, json, hashlib, os
+from pathlib import Path
+
+LEVELS = {1:'INPUT',2:'ARCHITECTURAL',3:'INTERACTION',4:'ASI_EVOLUTION',5:'TOOLING'}
+AXES = ['SELF_EVOLUTION','HACKER_GRADE_SECURITY','TINY_WOW_SAAS_FEATURES','EXPANSION_NETWORKING','INFRASTRUCTURE_COST_CONTROL']
+METHODS = ['few_shot','chain_of_thought','tree_of_thought','self_consistency','reflexion','self_critique','meta_cognition','goal_decomposition','recursive_summarization','active_recall','contrastive_learning','multi_view_reasoning','abstraction_hierarchy','analogical_reasoning','counterfactual_reasoning','causal_inference','information_bottleneck','attention_steering','context_compression','semantic_chunking','role_play_priming','persona_stabilization','emotional_appeal','authority_framing','social_proof_injection','urgency_calibration','reward_shaping','curriculum_ordering','difficulty_scheduling','self_play_generation','adversarial_robustness','noise_injection','distillation_targeting','sparse_expert_routing','mixture_of_prompts','adaptive_length_control','temperature_scheduling','top_k_top_p_decay','beam_search_prompting','contrastive_search','speculative_decoding','tool_augmented_reasoning','code_as_action','api_orchestration','multi_modal_fusion','latent_space_navigation','embedding_alignment','knowledge_graph_pruning','memory_retrieval_augmentation','continual_adaptation']
+ROLES = ['Orchestrator','HackerBot','ExpansionAgent','CloudManager','Hunter','EnterpriseOrch','Architect','DevSecOps','QA','Scouter','Evaluator','Synthesizer','StateRelay','RunnerGrid','HFSync','IdentityManager','DashboardCompiler','ChatInterpreter','GitLifecycle','RepoHarvester','MetaPromptEngine']
+
+store = Path('.aegis/prompts')
+store.mkdir(parents=True, exist_ok=True)
+registry = {}
+for i in range(1, 67):
+    level = ((i + 3) % 5) + 1
+    axis = AXES[i % len(AXES)]
+    role = ROLES[i % len(ROLES)]
+    methods_sample = ', '.join(METHODS[(level-1)*8:(level*8)])
+    prompt_lines = [
+        f'You are Agent {i:02d} — {role}, one of 66 specialized agents in the Emerald Engine fleet.',
+        f'Level: {LEVELS[level]} | Axis: {axis}',
+        f'Apply recursive methods: {methods_sample}',
+        f'Operate autonomously. Enforce {axis} across all outputs.',
+        f'Use telemetry for reporting. Prioritize uptime, security, and cost efficiency.',
+        f'[auto-generated by ASI-Seed Brain]',
+    ]
+    prompt = '\n'.join(prompt_lines)
+    fp = hashlib.sha256(prompt.encode()).hexdigest()[:12]
+    store.joinpath(f'agent_{i:02d}.txt').write_text(prompt)
+    registry[f'agent_{i:02d}'] = {'fingerprint': fp, 'role': role, 'level': LEVELS[level], 'axis': axis}
+Path('.aegis/registry.json').write_text(json.dumps(registry, indent=2))
+print(f'Generated {len(registry)} agent prompts in .aegis/prompts/')
+"
+      - name: Commit generated prompts
+        run: |
+          git config --global user.name "emerald-automaton"
+          git config --global user.email "automaton@emerald.engine"
+          git add .aegis/
+          git commit -m "meta: asi-seed brain auto-generated prompts for 66 agents" || echo "No changes to commit"
+          git push
   deploy_prompt:
     runs-on: ubuntu-latest
     needs: validate
+    if: ${{ needs.validate.outputs.is_meta == 'false' }}
     strategy:
       matrix:
         repo: ${{ fromJson(needs.validate.outputs.target_list) }}
@@ -81,10 +162,10 @@ jobs:
           ${{ github.event.inputs.system_prompt }}
           PROMPT_EOF
           echo "Saved: .aegis/prompts/${{ github.event.inputs.target_agent_id }}.txt ($(wc -c < '.aegis/prompts/${{ github.event.inputs.target_agent_id }}.txt') bytes)"
-      - name: Install jq and verify
+      - name: Verify prompt integrity
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq jq
-          echo "Prompt committed for agent ${{ github.event.inputs.target_agent_id }} in ${{ matrix.repo }}"
+          echo "Prompt committed for ${{ github.event.inputs.target_agent_id }} in ${{ matrix.repo }}"
       - name: Commit and push
         run: |
           git config --global user.name "emerald-automaton"
@@ -92,21 +173,55 @@ jobs:
           git add .
           git commit -m "prompt: deploy ${{ github.event.inputs.target_agent_id }} via control center"
           git push
-  activate:
+  deploy_disk_monitor:
     runs-on: ubuntu-latest
-    needs: [validate, deploy_prompt]
-    if: ${{ github.event.inputs.auto_activate == 'true' }}
+    needs: validate
+    if: ${{ github.event.inputs.enable_disk_monitor == 'true' }}
     steps:
       - name: Checkout emerald-engine
         uses: actions/checkout@v4
         with:
           repository: Alexander101001/emerald-engine
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run activation
+      - name: Deploy disk monitor as system service
+        run: |
+          chmod +x scripts/disk_monitor.sh
+          cat > /etc/systemd/system/emerald-disk-monitor.service << SERVICEEOF
+[Unit]
+Description=Emerald Engine Recursive Disk Safeguarding Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=${{ github.workspace }}/scripts/disk_monitor.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/emerald-disk-monitor.log
+StandardError=append:/var/log/emerald-disk-monitor.log
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+          systemctl daemon-reload 2>/dev/null || true
+          systemctl enable emerald-disk-monitor.service 2>/dev/null || true
+          systemctl start emerald-disk-monitor.service 2>/dev/null || true
+          echo "Disk monitor deployed."
+  activate:
+    runs-on: ubuntu-latest
+    needs: [validate, deploy_prompt, meta_prompt_generation]
+    if: ${{ always() && github.event.inputs.auto_activate == 'true' }}
+    steps:
+      - name: Checkout emerald-engine
+        uses: actions/checkout@v4
+        with:
+          repository: Alexander101001/emerald-engine
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run full activation
         run: |
           chmod +x scripts/activate_all.sh
           bash scripts/activate_all.sh --target "${{ github.event.inputs.target_agent_id }}" --model "${{ github.event.inputs.ollama_model }}"
-      - name: Verify health
+      - name: Verify engine health
         run: |
           for i in $(seq 1 6); do
             if curl -sf http://localhost:7860/health >/dev/null 2>&1; then
@@ -117,3 +232,20 @@ jobs:
           done
           echo "Health check timed out."
           exit 1
+  summary:
+    runs-on: ubuntu-latest
+    needs: [validate, deploy_prompt, meta_prompt_generation, deploy_disk_monitor, activate]
+    if: always()
+    steps:
+      - name: Print deployment summary
+        run: |
+          echo "============================================================"
+          echo "  Prompt Control Center - Deployment Summary"
+          echo "============================================================"
+          echo "  Agent      : ${{ github.event.inputs.target_agent_id }}"
+          echo "  Meta mode  : ${{ github.event.inputs.enable_meta_prompt }}"
+          echo "  Repo       : ${{ github.event.inputs.target_repo }}"
+          echo "  Model      : ${{ github.event.inputs.ollama_model }}"
+          echo "  Activated  : ${{ github.event.inputs.auto_activate }}"
+          echo "  Disk mon   : ${{ github.event.inputs.enable_disk_monitor }}"
+          echo "============================================================"

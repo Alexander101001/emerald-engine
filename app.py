@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import logging
+from pathlib import Path
 
 from telemetry import SystemTelemetry, telemetry_loop
 from self_improve_agent import run_self_improve_cycle
@@ -89,6 +90,22 @@ async def main_engine_loop():
         await asyncio.sleep(60)
 
 
+async def handle_prompts(request):
+    prompt_dir = Path(".aegis/prompts")
+    registry_path = Path(".aegis/registry.json")
+    prompts = {}
+    if prompt_dir.exists():
+        for p in sorted(prompt_dir.glob("*.txt")):
+            prompts[p.stem] = {"path": str(p), "size": p.stat().st_size}
+    registry = {}
+    if registry_path.exists():
+        try:
+            registry = json.loads(registry_path.read_text())
+        except Exception:
+            registry = {"error": "failed to parse registry"}
+    return {"prompts": prompts, "registry": registry, "count": len(prompts)}
+
+
 async def run_server():
     from aiohttp import web
     app = web.Application()
@@ -102,9 +119,13 @@ async def run_server():
     async def stream_handler(request):
         return web.json_response(await handle_stream(request))
 
+    async def prompts_handler(request):
+        return web.json_response(await handle_prompts(request))
+
     app.router.add_get("/health", health)
     app.router.add_get("/api/telemetry", telemetry_handler)
     app.router.add_get("/api/stream", stream_handler)
+    app.router.add_get("/api/prompts", prompts_handler)
     app["uptime"] = os.getenv("UPTIME", "0")
 
     runner = web.AppRunner(app)
@@ -134,6 +155,7 @@ async def main():
     from agent_chat_interpreter import run_chat_loop
     from agent_git_lifecycle import run_git_lifecycle_loop
     from agent_harvester import run_harvester_loop
+    from agent_meta_prompt_engine import run_meta_prompt_loop
 
     await run_server()
 
@@ -161,6 +183,7 @@ async def main():
         run_chat_loop(telemetry=telemetry),
         run_git_lifecycle_loop(telemetry=telemetry),
         run_harvester_loop(telemetry=telemetry),
+        run_meta_prompt_loop(telemetry=telemetry),
     )
 
 
