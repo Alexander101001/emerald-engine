@@ -19,6 +19,9 @@ src/engine/emerald-engine
 emerald-engine
 engine
 
+# Deployed external repos
+external_tools/
+
 # Build artifacts
 target/
 __pycache__/

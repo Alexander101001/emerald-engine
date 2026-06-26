@@ -1,0 +1,102 @@
+{
+  "meta": {
+    "created": 1782446400,
+    "target_environment": "mobile_docker_note10",
+    "max_ram_mb": 8000,
+    "max_cpus": 2.0
+  },
+  "tiers": {
+    "core_infrastructure": {
+      "priority": 1,
+      "label": "Core Infrastructure",
+      "description": "Must-run services providing LLM runtime, vector DB, cache, storage, network",
+      "services": [
+        {"repo": "Ollama/ollama", "port": 11434, "ram_mb": 2048, "cpu": 0.5, "image": "ollama/ollama:latest", "internal": false},
+        {"repo": "qdrant/qdrant", "port": 6333, "ram_mb": 256, "cpu": 0.25, "image": "qdrant/qdrant:latest", "internal": false},
+        {"repo": "redis/redis", "port": 6379, "ram_mb": 128, "cpu": 0.15, "image": "redis:7-alpine", "internal": true},
+        {"repo": "minio/minio", "port": 9000, "ram_mb": 256, "cpu": 0.2, "image": "minio/minio:latest", "internal": false},
+        {"repo": "traefik/traefik", "port": 80, "ram_mb": 128, "cpu": 0.15, "image": "traefik:v3.0", "internal": false},
+        {"repo": "linuxserver/docker-baseimage-alpine", "port": null, "ram_mb": 64, "cpu": 0.1, "image": "lscr.io/linuxserver/baseimage-alpine:latest", "internal": true, "no_expose": true},
+        {"repo": "fatedier/frp", "port": 7000, "ram_mb": 64, "cpu": 0.1, "image": "fatedier/frps:latest", "internal": false}
+      ]
+    },
+    "logic_layer": {
+      "priority": 2,
+      "label": "Logic Layer",
+      "description": "AI agent frameworks, LLM orchestration, workflow engines, web scraping",
+      "services": [
+        {"repo": "All-Hands-AI/OpenHands", "port": 3001, "ram_mb": 1024, "cpu": 0.5, "build": true, "internal": false},
+        {"repo": "crewAIInc/crewAI", "port": null, "ram_mb": 512, "cpu": 0.3, "pip": true, "internal": true},
+        {"repo": "langchain-ai/langchain", "port": null, "ram_mb": 256, "cpu": 0.2, "pip": true, "internal": true},
+        {"repo": "run-llama/llama_index", "port": null, "ram_mb": 256, "cpu": 0.2, "pip": true, "internal": true},
+        {"repo": "open-webui/open-webui", "port": 3000, "ram_mb": 512, "cpu": 0.3, "image": "ghcr.io/open-webui/open-webui:main", "internal": false},
+        {"repo": "FlowiseAI/Flowise", "port": 3002, "ram_mb": 512, "cpu": 0.3, "image": "flowiseai/flowise:latest", "internal": false},
+        {"repo": "langflow-ai/langflow", "port": 3003, "ram_mb": 512, "cpu": 0.3, "image": "langflowai/langflow:latest", "internal": false},
+        {"repo": "microsoft/autogen", "port": null, "ram_mb": 256, "cpu": 0.2, "pip": true, "internal": true},
+        {"repo": "dify-ai/dify", "port": 3004, "ram_mb": 512, "cpu": 0.3, "image": "langgenius/dify:latest", "internal": false},
+        {"repo": "Significant-Gravitas/AutoGPT", "port": null, "ram_mb": 384, "cpu": 0.25, "pip": true, "internal": true},
+        {"repo": "LiteLLM/litellm", "port": 4000, "ram_mb": 256, "cpu": 0.2, "image": "ghcr.io/berriai/litellm:main", "internal": false},
+        {"repo": "vllm-project/vllm", "port": 8000, "ram_mb": 2048, "cpu": 0.5, "skip": true, "reason": "requires >2GB VRAM; use local Ollama instead"},
+        {"repo": "geekan/MetaGPT", "port": null, "ram_mb": 384, "cpu": 0.25, "pip": true, "internal": true},
+        {"repo": "yoheinakajima/babyagi", "port": null, "ram_mb": 128, "cpu": 0.15, "pip": true, "internal": true},
+        {"repo": "OpenBMB/ChatDev", "port": null, "ram_mb": 384, "cpu": 0.25, "pip": true, "internal": true},
+        {"repo": "faststream-team/faststream", "port": null, "ram_mb": 128, "cpu": 0.15, "pip": true, "internal": true},
+        {"repo": "lm-sys/FastChat", "port": 8001, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "use local Ollama instead"},
+        {"repo": "chatchat-space/Langchain-Chatchat", "port": 8002, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "heavy Chinese NLP stack"},
+        {"repo": "TransformerOptimus/SuperAGI", "port": 8003, "ram_mb": 384, "cpu": 0.25, "pip": true, "internal": true},
+        {"repo": "unclecode/crawl4ai", "port": null, "ram_mb": 256, "cpu": 0.2, "pip": true, "internal": true},
+        {"repo": "browser-use/browser-use", "port": null, "ram_mb": 256, "cpu": 0.2, "pip": true, "internal": true},
+        {"repo": "skyvern-ai/skyvern", "port": 8004, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "needs Playwright browser; lightweight alternative: crawl4ai"},
+        {"repo": "scrapy/scrapy", "port": null, "ram_mb": 128, "cpu": 0.15, "pip": true, "internal": true},
+        {"repo": "n8n-io/n8n", "port": 5678, "ram_mb": 256, "cpu": 0.2, "image": "n8nio/n8n:latest", "internal": false},
+        {"repo": "activepieces/activepieces", "port": 8080, "ram_mb": 256, "cpu": 0.2, "image": "activepieces/activepieces:latest", "internal": false},
+        {"repo": "huginn/huginn", "port": 3005, "ram_mb": 256, "cpu": 0.2, "image": "ghcr.io/huginn/huginn:latest", "internal": false},
+        {"repo": "prefecthq/prefect", "port": 4200, "ram_mb": 256, "cpu": 0.2, "image": "prefecthq/prefect:latest", "internal": false},
+        {"repo": "node-red/node-red", "port": 1880, "ram_mb": 128, "cpu": 0.15, "image": "nodered/node-red:latest", "internal": false},
+        {"repo": "apache/airflow", "port": 8081, "ram_mb": 1024, "cpu": 0.4, "skip": true, "reason": "heavy; use prefect or n8n instead"},
+        {"repo": "kestra-io/kestra", "port": 8082, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "JVM-based; use n8n or prefect instead"}
+      ]
+    },
+    "interface_layer": {
+      "priority": 3,
+      "label": "Interface Layer",
+      "description": "SaaS frontends, no-code backends, productivity tools, monitoring",
+      "services": [
+        {"repo": "appsmithorg/appsmith", "port": 8080, "ram_mb": 512, "cpu": 0.3, "image": "appsmith/appsmith-ce:latest", "internal": false},
+        {"repo": "budibase/budibase", "port": 8081, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "heavy; use appsmith or ToolJet instead"},
+        {"repo": "ToolJet/ToolJet", "port": 8082, "ram_mb": 384, "cpu": 0.25, "image": "tooljet/tooljet:latest", "internal": false},
+        {"repo": "pocketbase/pocketbase", "port": 8090, "ram_mb": 128, "cpu": 0.15, "image": "pocketbase/pocketbase:latest", "internal": false},
+        {"repo": "supabase/supabase", "port": 8000, "ram_mb": 1024, "cpu": 0.4, "skip": true, "reason": "requires Postgres+GoTrue; use pocketbase instead"},
+        {"repo": "appwrite/appwrite", "port": 8083, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "heavy multi-service; use pocketbase instead"},
+        {"repo": "strapi/strapi", "port": 1337, "ram_mb": 256, "cpu": 0.2, "image": "strapi/strapi:latest", "internal": false},
+        {"repo": "directus/directus", "port": 8055, "ram_mb": 256, "cpu": 0.2, "image": "directus/directus:latest", "internal": false},
+        {"repo": "nocodb/nocodb", "port": 8084, "ram_mb": 256, "cpu": 0.2, "image": "nocodb/nocodb:latest", "internal": false},
+        {"repo": "calcom/cal.com", "port": 3006, "ram_mb": 256, "cpu": 0.2, "image": "calcom/calcom:latest", "internal": false},
+        {"repo": "chatwoot/chatwoot", "port": 3007, "ram_mb": 512, "cpu": 0.3, "image": "chatwoot/chatwoot:latest", "internal": false},
+        {"repo": "Stirling-Tools/Stirling-PDF", "port": 8085, "ram_mb": 256, "cpu": 0.2, "image": "stirlingtools/stirling-pdf:latest", "internal": false},
+        {"repo": "docusealco/docuseal", "port": 8086, "ram_mb": 128, "cpu": 0.15, "image": "docuseal/docuseal:latest", "internal": false},
+        {"repo": "CapSoftware/Cap", "port": null, "ram_mb": 128, "cpu": 0.1, "pip": true, "internal": true},
+        {"repo": "toeverything/AFFiNE", "port": 3008, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "heavy; use AppFlowy instead"},
+        {"repo": "AppFlowy-IO/AppFlowy", "port": 3009, "ram_mb": 256, "cpu": 0.2, "image": "appflowy/appflowy:latest", "internal": false},
+        {"repo": "metabase/metabase", "port": 3009, "ram_mb": 256, "cpu": 0.2, "image": "metabase/metabase:latest", "internal": false},
+        {"repo": "grafana/grafana", "port": 3010, "ram_mb": 128, "cpu": 0.15, "image": "grafana/grafana:latest", "internal": false},
+        {"repo": "portainer/portainer", "port": 9001, "ram_mb": 128, "cpu": 0.15, "image": "portainer/portainer-ce:latest", "internal": false},
+        {"repo": "louislam/uptime-kuma", "port": 3001, "ram_mb": 128, "cpu": 0.15, "image": "louislam/uptime-kuma:latest", "internal": false},
+        {"repo": "prometheus/prometheus", "port": 9090, "ram_mb": 256, "cpu": 0.2, "image": "prom/prometheus:latest", "internal": false},
+        {"repo": "netdata/netdata", "port": 19999, "ram_mb": 256, "cpu": 0.2, "image": "netdata/netdata:latest", "internal": false},
+        {"repo": "plausible/analytics", "port": 8005, "ram_mb": 256, "cpu": 0.2, "skip": true, "reason": "needs Postgres+ClickHouse; use umami instead"},
+        {"repo": "umami-software/umami", "port": 3011, "ram_mb": 128, "cpu": 0.15, "image": "umamisoftware/umami:latest", "internal": false},
+        {"repo": "knadh/listmonk", "port": 9009, "ram_mb": 128, "cpu": 0.15, "image": "listmonk/listmonk:latest", "internal": false},
+        {"repo": "mautic/mautic", "port": 8087, "ram_mb": 256, "cpu": 0.2, "skip": true, "reason": "PHP heavy; use listmonk instead"},
+        {"repo": "clickhouse/clickhouse-server", "port": 8123, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "heavy OLAP; use sqlite/redis instead"},
+        {"repo": "meilisearch/meilisearch", "port": 7700, "ram_mb": 256, "cpu": 0.2, "image": "getmeili/meilisearch:latest", "internal": false},
+        {"repo": "typesense/typesense", "port": 8108, "ram_mb": 128, "cpu": 0.15, "image": "typesense/typesense:latest", "internal": false},
+        {"repo": "hasura/graphql-engine", "port": 8088, "ram_mb": 256, "cpu": 0.2, "skip": true, "reason": "needs Postgres; use directus instead"},
+        {"repo": "coollabsio/coolify", "port": 8006, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "heavy; use portainer instead"},
+        {"repo": "dokku/dokku", "port": null, "ram_mb": 256, "cpu": 0.2, "skip": true, "reason": "system-level; conflicts with Docker compose"},
+        {"repo": "meltano/meltano", "port": null, "ram_mb": 256, "cpu": 0.2, "pip": true, "internal": true},
+        {"repo": "temporalio/temporal", "port": 7233, "ram_mb": 512, "cpu": 0.3, "skip": true, "reason": "needs Postgres+Elasticsearch; use n8n instead"}
+      ]
+    }
+  }
+}

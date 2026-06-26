@@ -1,6 +1,127 @@
 version: "3.9"
 
 services:
+  emerald-ollama:
+    image: ollama/ollama:latest
+    container_name: emerald-ollama
+    restart: always
+    networks:
+      - emerald_network
+      - emerald-internal
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_KEEP_ALIVE=5m
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: "0.50"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  emerald-redis:
+    image: redis:7-alpine
+    container_name: emerald-redis
+    restart: always
+    networks:
+      - emerald_network
+      - emerald-internal
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.15"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  emerald-minio:
+    image: minio/minio:latest
+    container_name: emerald-minio
+    restart: always
+    networks:
+      - emerald_network
+      - emerald-internal
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-emerald}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-emerald_secret_key}
+    command: server /data --console-address ":9001"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.20"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  emerald-traefik:
+    image: traefik:v3.0
+    container_name: emerald-traefik
+    restart: always
+    networks:
+      - emerald_network
+      - emerald-internal
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-config:/etc/traefik
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.15"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   emerald-vault-sentinel:
     build:
       context: .
@@ -9,6 +130,7 @@ services:
     container_name: emerald-vault-sentinel
     restart: always
     networks:
+      - emerald_network
       - emerald-internal
     ports:
       - "8443:8443"
@@ -50,6 +172,7 @@ services:
       emerald-vault-sentinel:
         condition: service_healthy
     networks:
+      - emerald_network
       - emerald-internal
     ports:
       - "7860:7860"
@@ -58,7 +181,7 @@ services:
       - SENTINEL_URL=http://emerald-vault-sentinel:8443
       - SENTINEL_AUTH_TOKEN=${SENTINEL_AUTH_TOKEN:-}
       - PYTHONUNBUFFERED=1
-      - OLLAMA_ENDPOINT=${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      - OLLAMA_ENDPOINT=http://emerald-ollama:11434
       - HF_SPACE_URL=https://alexandergreater90-emerald-engine.hf.space
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_USER_ID=${TELEGRAM_USER_ID:-}
@@ -94,9 +217,10 @@ services:
     depends_on:
       - emerald-engine
     networks:
+      - emerald_network
       - emerald-internal
     environment:
-      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_URL=http://emerald-qdrant:6333
       - QDRANT_COLLECTION=research_vectors
       - STREAM_WORKERS=4
       - ARXIV_QUERY=cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL
@@ -122,6 +246,7 @@ services:
     container_name: emerald-qdrant
     restart: always
     networks:
+      - emerald_network
       - emerald-internal
     ports:
       - "6333:6333"
@@ -141,6 +266,12 @@ services:
       start_period: 5s
 
 networks:
+  emerald_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+
   emerald-internal:
     driver: bridge
     internal: true
@@ -160,4 +291,12 @@ volumes:
   qdrant-data:
     driver: local
   research-data:
+    driver: local
+  ollama-models:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+  traefik-config:
     driver: local

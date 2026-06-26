@@ -1,9 +1,22 @@
-name: Sync to Hugging Face Spaces
+name: Sync to Hugging Face Spaces + Module Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, emerald-state]
   workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to deploy (core, logic, interface, all)'
+        required: false
+        default: 'core'
+      skip_clone:
+        description: 'Skip cloning, only generate compose'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 env:
   HF_SPACE: AlexanderGreater90/emerald-engine
@@ -67,8 +80,39 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           if [ -z "$HF_TOKEN" ]; then
-            echo "HF_TOKEN not set — skipping deploy"
+            echo "HF_TOKEN not set - skipping deploy"
             exit 0
           fi
           git remote add hf https://huggingface.co/spaces/${{ env.HF_SPACE }} || true
           git push --force https://AlexanderGreater90:$HF_TOKEN@huggingface.co/spaces/${{ env.HF_SPACE }} main
+
+  module-deploy:
+    runs-on: ubuntu-latest
+    needs: [obfuscation-scan]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Set module from input or default
+        run: |
+          MODULE="${{ github.event.inputs.module }}"
+          echo "MODULE=${MODULE:-core}" >> $GITHUB_ENV
+      - name: Deploy module via deploy_module.py
+        run: |
+          chmod +x scripts/deploy_module.py
+          python scripts/deploy_module.py "${{ env.MODULE }}"
+      - name: Commit compose fragments and logs
+        run: |
+          git config --global user.name "emerald-automaton"
+          git config --global user.email "automaton@emerald.engine"
+          git add compose_fragments/ workspace_core/ 2>/dev/null || true
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "module: deploy ${{ env.MODULE }} tier via deploy_module"
+            git push
+          else
+            echo "No changes to commit"
+          fi
+      - name: Log deployment result
+        run: |
+          python scripts/success_tracker.py record "${{ env.MODULE }}" "deploy" "success"
