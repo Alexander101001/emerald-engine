@@ -10,6 +10,8 @@ secure-tokens.json
 .env.local
 .DS_Store
 .aegis/
+!.aegis/prompts/
+!.aegis/userscript/
 .tmp-emerald/
 .secrets/
 .tenants/
