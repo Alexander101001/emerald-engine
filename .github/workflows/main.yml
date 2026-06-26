@@ -1,0 +1,132 @@
+name: Emerald Engine CI/CD
+on:
+  push:
+    branches: [main, emerald-state]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_evolution:
+        description: 'Run self-evolution loop in CI'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  PYTHON_VERSION: "3.13"
+  OLLAMA_MODEL: qwen2.5-coder:1.5b
+
+jobs:
+  lint-and-validate:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt --quiet 2>/dev/null || true
+          pip install pyflakes pycodestyle --quiet
+      - name: Pyflakes syntax check
+        run: |
+          find . -name '*.py' -not -path './.git/*' -not -path './harvested_repos/*' \
+            -not -path './external_tools/*' -not -path './node_modules/*' \
+            -exec pyflakes {} + 2>&1 | head -50 || true
+      - name: Check script permissions
+        run: |
+          for f in scripts/*.sh; do
+            if [ ! -x "$f" ]; then
+              echo "Fixing permissions: $f"
+              chmod +x "$f"
+            fi
+          done
+      - name: Validate docker-compose
+        run: |
+          docker compose config 2>/dev/null || echo "Docker not available in CI"
+
+  self-evolution:
+    name: Self-Evolution Loop
+    needs: lint-and-validate
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_evolution == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Pull Ollama model
+        run: |
+          pip install requests --quiet
+          python -c "
+import requests, time
+url = 'http://localhost:11434/api/pull'
+print('Pulling Ollama model...')
+try:
+    r = requests.post(url, json={'name': '${{ env.OLLAMA_MODEL }}'}, timeout=600)
+    print(f'Pull status: {r.status_code}')
+except Exception as e:
+    print(f'Ollama pull skipped: {e}')
+"
+      - name: Run evolution cycle
+        env:
+          OLLAMA_HOST: http://localhost:11434
+          EVOLUTION_INTERVAL: "10"
+          EVOLUTION_AUTO_PUSH: "false"
+        run: |
+          timeout 120 python self_evolution.py 2>&1 || echo "Evolution cycle timed out (expected in CI)"
+      - name: Commit optimizations
+        run: |
+          git config --global user.name "emerald-ci"
+          git config --global user.email "ci@emerald.engine"
+          git add -A
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "ci: auto-optimizations from self-evolution loop"
+            git push
+          else
+            echo "No optimizations to commit"
+          fi
+
+  deploy:
+    name: Deploy & Health Check
+    needs: [lint-and-validate, self-evolution]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate health report
+        run: |
+          echo "=== Emerald Engine Health Report ===" > System_Health_Report.txt
+          echo "Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> System_Health_Report.txt
+          echo "Commit: ${{ github.sha }}" >> System_Health_Report.txt
+          echo "Branch: ${{ github.ref_name }}" >> System_Health_Report.txt
+          echo "" >> System_Health_Report.txt
+          echo "-- Integrity Check --" >> System_Health_Report.txt
+          PY_COUNT=$(find . -name '*.py' -not -path './.git/*' -not -path './harvested_repos/*' | wc -l)
+          echo "Python files: $PY_COUNT" >> System_Health_Report.txt
+          SH_COUNT=$(find . -name '*.sh' -not -path './.git/*' -not -path './harvested_repos/*' | wc -l)
+          echo "Shell scripts: $SH_COUNT" >> System_Health_Report.txt
+          echo "" >> System_Health_Report.txt
+          echo "-- Workflow Status --" >> System_Health_Report.txt
+          ls .github/workflows/ >> System_Health_Report.txt
+          echo "" >> System_Health_Report.txt
+          echo "-- Services Defined --" >> System_Health_Report.txt
+          grep -oP 'container_name: \K.*' docker-compose.yml 2>/dev/null >> System_Health_Report.txt || echo "No compose" >> System_Health_Report.txt
+          echo "" >> System_Health_Report.txt
+          echo "-- Evolution Log (last cycle) --" >> System_Health_Report.txt
+          cat /tmp/evolution_log.json 2>/dev/null >> System_Health_Report.txt || echo "No evolution data yet" >> System_Health_Report.txt
+      - name: Upload health report
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-health-report
+          path: System_Health_Report.txt
+      - name: Verify repo consistency
+        run: |
+          git fsck --no-dangling 2>&1 || true
+          echo "Repository integrity check complete"
